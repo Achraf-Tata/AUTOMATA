@@ -42,7 +42,7 @@ $$
   1. Implement the predecessor operator:
 
 $$
-Pre(R) = \left\{ s \in S \;\middle|\; \exists u \in \{0, 1\}, \; Post(s, u) \subseteq R \right\}
+Pre(R) = \lbrace s \in S \mid \exists u \in \{0, 1\}, \; Post(s, u) \subseteq R \rbrace
 $$
 
   2. Implement **Algorithme 1** (Fixed-point iteration):
@@ -63,7 +63,7 @@ $$
   1. Simulate closed-loop operation for $86,400\text{ s}$ (24 hours) with variable weather:
 
 $$
-T_e(t) = 8.5 + 3.5 \sin\left(\frac{2\pi t}{86400}\right)
+T_e(t) = 8.5 + 3.5 \sin\Big(\frac{2\pi t}{86400}\Big)
 $$
 
   2. Record $(t, T(t), u(t), T_e(t))$ to `thermostat_sim.csv`.

@@ -47,7 +47,7 @@ $$
   2. Implement backward reachability fixed-point over product space $Q_{\text{DFA}} \times X_{\text{grid}}$:
 
 $$
-V_{k+1}(q, c) = \min_{u \in U} \left\{ \max_{w \in W} V_k(q', c') + 1 \right\}
+V_{k+1}(q, c) = \min_{u \in U} \Big[ \max_{w \in W} V_k(q', c') + 1 \Big]
 $$
 
   3. Extract and save the optimal controller array: `uint8_t best_control[5][100][100][30]`.
