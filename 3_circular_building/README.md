@@ -8,11 +8,24 @@ $$
 \dot{T}_i(t) = -\alpha \big(T_i(t) - T_e(t)\big) - \beta \Big(\big(T_i(t) - T_{i-1}(t)\big) + \big(T_i(t) - T_{i+1}(t)\big)\Big) + \gamma u_i(t)
 $$
 
-* **Parameters**: Heat loss $\alpha = 0.05$, conduction $\beta = 0.02$, heater power $\gamma = 1.0$.
-* **Domains**: State $T_i \in [15.0, 25.0]^\circ\text{C}$, weather disturbance $T_e \in [5.0, 12.0]^\circ\text{C}$, heater $u_i \in \{0, 1\}$.
+### Grouped Discrete-Time Equation for Room $i$
+Under the Assume-Guarantee contract, neighbor rooms are assumed to remain safe: $A_i: (T_{i-1}, T_{i+1}) \in [19.0, 22.0]^2$.
+
+With constants $\alpha = 0.05$, $\beta = 0.02$, $\gamma = 1.0$, and $\tau = 1.0\text{ s}$:
+* Conduction coefficient: $1 - (\alpha + 2\beta)\tau = 1 - (0.05 + 0.04) = 0.91$.
+* Ambient disturbance term: $\alpha \tau T_e \in [0.05 \cdot 5.0, \; 0.05 \cdot 12.0] = [0.25, 0.60]$.
+* Coupling disturbance term: $w_{i,\text{coupling}} = \beta \tau (T_{i-1} + T_{i+1}) \in [0.02 \cdot 38.0, \; 0.02 \cdot 44.0] = [0.76, 0.88]$.
+* **Total Combined Disturbance**: $W_i = \alpha \tau T_e + w_{i,\text{coupling}} \in [0.25 + 0.76, \; 0.60 + 0.88] = [1.01, 1.48]$.
+
+This yields the exact decoupled 1D discrete update for room $i$:
+
+$$
+T_i(t+1) = 0.91 \cdot T_i(t) + W_i + 1.0 \cdot u_i(t), \quad W_i \in [1.01, 1.48]
+$$
+
+* **Local Discretization**: Domain $[15.0, 25.0]^\circ\text{C}$ with $M = 50$ cells ($\Delta T = 0.2^\circ\text{C}$). Safe cells are $k \in [20, 34]$.
 * **Global Specification**: $\forall i \in \{0, \dots, N-1\}, \; \forall t \ge 0, \; T_i(t) \in [19.0, 22.0]^\circ\text{C}$.
 * **Zero Dependencies**: This project is 100% self-contained. It contains its own internal local contract abstraction and solvers with no dependencies on other folders.
-* **Challenge Goal**: Avoid naive $O(G^N)$ exponential explosion by implementing $O(N)$ Assume-Guarantee contracts scaling to $N \in [3, 1000]$.
 
 ---
 
@@ -20,10 +33,12 @@ $$
 
 ### Member 1: Coupled Physics & Metzler Matrix Monotonicity
 * **File to produce**: `include/circular_network.hpp`
+* **Constants**:
+  * `const double ALPHA = 0.05; const double BETA = 0.02; const double GAMMA = 1.0;`
 * **Functions to implement**:
   1. `void step_network_euler(std::vector<double>& T, const std::vector<int>& u, double Te, double dt)`
      * **What it does**: Integrates all $N$ coupled room temperatures forward by 1 time step with periodic boundary conditions.
-     * **How it does it**: For each room $i$, computes left neighbor $T_{(i - 1 + N) \pmod N}$ and right neighbor $T_{(i + 1) \pmod N}$. Evaluates $\dot{T}_i$ and applies forward Euler update: $T_i \leftarrow T_i + dt \cdot \dot{T}_i$.
+     * **How it does it**: For each room $i$, evaluates left neighbor $T_{(i - 1 + N) \pmod N}$ and right neighbor $T_{(i + 1) \pmod N}$. Evaluates $\dot{T}_i$ and applies forward Euler update: $T_i \leftarrow T_i + dt \cdot \dot{T}_i$.
   2. `void propagate_extreme_trajectories(std::vector<double>& T_lower, std::vector<double>& T_upper, ...)`
      * **What it does**: Bounds the continuous trajectory continuum of all $N$ rooms by propagating only 2 extreme points.
      * **How it does it**: By Kamke-Müller theorem for Metzler systems, simulates $\underline{T}$ with worst-case cold disturbance $T_{e,\min}$ and heaters OFF, and $\overline{T}$ with worst-case warm disturbance $T_{e,\max}$ and heaters ON. Complexity is strictly $O(N)$.
@@ -33,20 +48,25 @@ $$
 
 ### Member 2: Contract Interval Abstraction
 * **File to produce**: `include/contract_abstraction.hpp`
+* **Constants**:
+  * `const double W_MIN = 1.01; const double W_MAX = 1.48;`
+  * `const double COEFF_T = 0.91; const double COEFF_U = 1.0;`
 * **Functions to implement**:
-  1. `DisturbanceBox compute_coupling_disturbance(double beta, Interval safe_bounds)`
-     * **What it does**: Converts the inter-room heat exchange into a bounded disturbance interval.
-     * **How it does it**: Under assumption $A_i: T_{i-1}, T_{i+1} \in [19.0, 22.0]$, computes coupling term $w_{i,\text{coupling}} = \beta (T_{i-1} + T_{i+1}) \in [2\beta \cdot 19.0, \; 2\beta \cdot 22.0]$.
-  2. `std::vector<int> compute_local_post(int s_i, int u_i, const DisturbanceBox& w_coupling, const DisturbanceBox& Te_box)`
+  1. `std::pair<double, double> step_local_interval(double T_min, double T_max, int u)`
+     * **What it does**: Computes continuous reachability interval for room $i$ under total disturbance $W_i \in [1.01, 1.48]$.
+     * **How it does it**: $\underline{T}' = 0.91 \cdot \underline{T} + 1.01 + 1.0 \cdot u$ and $\overline{T}' = 0.91 \cdot \overline{T} + 1.48 + 1.0 \cdot u$.
+  2. `std::vector<int> compute_local_post(int cell_id, int u)`
      * **What it does**: Precomputes discrete 1D transition sets for an individual room.
-     * **How it does it**: Computes forward continuous interval for cell $s_i$ under combined disturbance $(T_e + w_{i,\text{coupling}})$, and maps resulting $[\underline{T}', \overline{T}']$ into discrete cell IDs.
+     * **How it does it**: Evaluates `step_local_interval` on cell bounds $[15.0 + 0.2k, 15.0 + 0.2(k+1)]$, quantizes resulting $[\underline{T}', \overline{T}']$, and returns all integer cell IDs in range $[c_{\min}', c_{\max}']$.
 
 ### Member 3: Assume-Guarantee Contract Synthesis
 * **Files to produce**: `include/contract_solver.hpp`, `src/contract_solver.cpp`
+* **Initialization**: Set $R_0 = \{20, 21, \dots, 34\}$.
 * **Functions to implement**:
   1. `Set synthesize_local_room_contract(int room_id, const LocalAbstraction& abs)`
      * **What it does**: Synthesizes the local invariant set $R_i^*$ and policy $C_i(T_i)$ for room $i$ under assumption $A_i$.
      * **How it does it**: Solves the 1D safety fixed-point loop $R_{k+1} = R_k \cap Pre(R_k)$ using Member 2's local transitions. Complexity is $O(M)$ where $M=50$ cells.
+     * **Tie-Breaker**: If both $u_i=0$ and $u_i=1$ are safe, select $u_i=0$ (energy minimization).
   2. `bool verify_circular_contract_compatibility(const std::vector<Set>& local_invariants)`
      * **What it does**: Mathematically proves that the composition of local contracts guarantees global building safety.
      * **How it does it**: Formally checks that the local guarantee $G_i = [19.0, 22.0]$ strictly satisfies neighbor assumptions: $G_i \subseteq A_{i-1}$ and $G_i \subseteq A_{i+1}$ for all $i \in \{0, \dots, N-1\}$.
