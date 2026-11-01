@@ -1,107 +1,70 @@
-# Project 2: Room Thermostat (Safety Invariance Synthesis)
+# Project 2: Room Thermostat (Safety Invariance)
 
-## 1. Overview & Objective
-High-performance C++20 implementation of discrete interval abstraction, **Algorithme 1 (Safety Controller Synthesis / Maximal Controlled Invariant Set)**, and continuous closed-loop invariance verification for a 1D thermal system subject to persistent ambient disturbances.
-
-* **Paper Reference**: Section 1.1 (*"Un exemple simple : le thermostat"*, p. 5) & Section 2.1 (*"Propriétés de sûreté"*, pp. 7–8) of Antoine Girard, Pierre-Jean Meyer, and Adnane Saoud (2024).
-* **Target Paradigms**: Bit-parallel set algebra (`std::bitset` / `uint64_t` bitboards), AVX2 SIMD instructions, sub-millisecond fixed-point solver.
-* **Target Language**: Modern C++ (C++20).
-
----
-
-## 2. Mathematical System Model
-
-### Continuous Dynamics & Euler Discretization
-$$\dot{T}(t) = -\alpha \big(T(t) - T_e(t)\big) + \beta \cdot u(t)$$
-With sampling step $\tau > 0$, the discrete-time forward update is:
-$$T(t+1) = (1 - \alpha \tau) T(t) + \alpha \tau \cdot T_e(t) + \beta \tau \cdot u(t)$$
-
-* **Continuous State**: Room temperature $T \in [15.0, 25.0]^\circ\text{C}$.
-* **Control Input**: $u \in \{0, 1\}$ ($0 = \text{OFF}, 1 = \text{ON}$).
-* **Disturbance**: External weather $T_e(t) \in [T_{e,\min}, T_{e,\max}]$ (e.g. $[5.0, 12.0]^\circ\text{C}$).
-* **Physical Constants**: Heat loss $\alpha = 0.05\text{ s}^{-1}$, heating power $\beta = 1.0\text{ K/s}$, sampling time $\tau = 1.0\text{ s}$.
-* **Safety Invariance Specification**:
-  $$\forall t \ge 0, \quad T(t) \in [T_{\text{safe, min}}, T_{\text{safe, max}}] = [19.0, 22.0]^\circ\text{C}$$
+## 1. System Model & Specification
+* **Dynamics**:
+  $$\dot{T}(t) = -\alpha \big(T(t) - T_e(t)\big) + \beta \cdot u(t)$$
+  $$T(t+1) = (1 - \alpha \tau) T(t) + \alpha \tau \cdot T_e(t) + \beta \tau \cdot u(t)$$
+* **Parameters**: $\alpha = 0.05\text{ s}^{-1}$, $\beta = 1.0\text{ K/s}$, $\tau = 1.0\text{ s}$.
+* **Domains**: State $T \in [15, 25]^\circ\text{C}$, disturbance $T_e \in [5, 12]^\circ\text{C}$, control $u \in \{0, 1\}$.
+* **Safety Specification**: Maintain $T(t) \in [19.0, 22.0]^\circ\text{C}$ for all $t \ge 0$.
 
 ---
 
-## 3. Advanced Computing & Bit-Parallel Algebra
-
-Instead of allocating memory dynamically for every state set, we represent state subsets as **Bitboards** (`uint64_t` or `std::bitset<N>`):
-
-```
-State Index:     [ 0 | 1 | 2 | 3 | 4 | 5 | ... | 63 ]
-Bit Representation: 1   1   1   1   0   0           0   (1 = State in Set, 0 = Not in Set)
-```
-
-* **Set Intersection ($R_k \cap Pre(R_k)$)**: Compiles to a single CPU machine cycle bitwise `AND` (`&`).
-* **Set Inclusion ($Post(s, u) \subseteq R$)**: Evaluated via bitmask checking:
-  $$\big( PostMask(s, u) \;\&\; \sim R \big) == 0$$
-* **Convergence Check**: Hardware population count `_mm_popcnt_u64` counts surviving states in 1 CPU cycle.
-* **Result**: Complete synthesis of the maximal invariant set converges in **under 100 microseconds**.
-
----
-
-## 4. Team Task Repartition (5 Members)
+## 2. Exact Member Task Assignments
 
 ### Member 1: Thermal ODE & Continuous Boundary Stability
-- Formulate the continuous thermal ODE in `include/thermostat_model.hpp`.
-- Derive the continuous invariance boundary conditions:
-  - At $T = T_{\text{safe, min}}$, verify that $u=1$ ensures $\dot{T} \ge 0$ for all $T_e \in [T_{e,\min}, T_{e,\max}]$.
-  - At $T = T_{\text{safe, max}}$, verify that $u=0$ ensures $\dot{T} \le 0$ for all $T_e \in [T_{e,\min}, T_{e,\max}]$.
-- Mathematically prove the condition on physical parameters ensuring the safety game is winnable:
-  $$\frac{\beta}{\alpha} + T_{e,\min} \ge T_{\text{safe, min}} \quad \text{and} \quad T_{e,\max} \le T_{\text{safe, max}}$$
+* **File to produce**: `include/thermostat_model.hpp`
+* **Exact Tasks**:
+  1. Implement `double step_euler(double T, int u, double Te, double dt)`.
+  2. Implement `std::pair<double, double> step_interval(double T_min, double T_max, int u, double Te_min, double Te_max, double dt)`.
+  3. Validate continuous boundary invariants:
+     - Check $\dot{T} > 0$ at $T = 19.0$ with $u = 1$ under worst-case $T_{e,\min} = 5.0$.
+     - Check $\dot{T} < 0$ at $T = 22.0$ with $u = 0$ under worst-case $T_{e,\max} = 12.0$.
 
-### Member 2: State Space Discretization & Transition Matrix
-- Implement the continuous interval partition ($M$ intervals of width $\Delta T = 0.1^\circ\text{C}$) in `include/interval_abstraction.hpp`.
-- Formulate the exact interval reachability mapping:
-  $$[\underline{T}', \overline{T}'] = [(1 - \alpha \tau)\underline{T} + \alpha \tau \underline{T}_e + \beta \tau u, \; (1 - \alpha \tau)\overline{T} + \alpha \tau \overline{T}_e + \beta \tau u]$$
-- Precompute the discrete transition relation bitmasks `transition_mask[state][u]`.
+### Member 2: Interval Discretizer & Transition Graph
+* **File to produce**: `include/interval_abstraction.hpp`
+* **Exact Tasks**:
+  1. Partition $[15, 25]^\circ\text{C}$ into $M = 50$ intervals ($0.2^\circ\text{C}$ each) + 1 unsafe sink state.
+  2. Implement `int quantize(double T)` and `std::pair<double, double> cell_bounds(int cell_id)`.
+  3. Precompute transition set `std::vector<int> post(int cell_id, int u)` under disturbance interval $T_e \in [5, 12]$.
 
-### Member 3: Predecessor Operator & Algorithme 1 Fixed Point
-- Implement the predecessor operator in `include/safety_solver.hpp`:
-  $$Pre(R) = \left\{ s \in S \;\middle|\; \exists u \in U, \; Post(s, u) \subseteq R \right\}$$
-- Implement **Algorithme 1** (Greatest Fixed Point):
-  $$\begin{aligned}
-  R_0 &= S_{\text{safe}} \\
-  R_{k+1} &= R_k \cap Pre(R_k) \quad \text{until } R_{k+1} = R_k = R^*
-  \end{aligned}$$
-- Extract the minimal-switching deterministic controller:
-  $$u^*(s) = \begin{cases} 0 & \text{if } Post(s, 0) \subseteq R^* \\ 1 & \text{if } Post(s, 1) \subseteq R^* \end{cases}$$
+### Member 3: Predecessor Operator & Algorithme 1 Solver
+* **Files to produce**: `include/safety_solver.hpp`, `src/safety_solver.cpp`
+* **Exact Tasks**:
+  1. Implement the predecessor operator:
+     $$Pre(R) = \left\{ s \in S \;\middle|\; \exists u \in \{0, 1\}, \; Post(s, u) \subseteq R \right\}$$
+  2. Implement **Algorithme 1**:
+     ```cpp
+     Set R = S_safe;
+     while (true) {
+         Set R_next = intersect(R, Pre(R));
+         if (R_next == R) break;
+         R = R_next;
+     }
+     return R; // Maximal Controlled Invariant Set R*
+     ```
+  3. Output lookup table: `int controller[M]` where $u^*(s) \in \{0, 1\}$.
 
-### Member 4: C++ HPC Architecture & Bitset Vectorization
-- Implement the bitboard algebra using `std::bitset<128>` and AVX2 intrinsics (`_mm256_and_si256`) in `include/bitset_algebra.hpp`.
-- Ensure zero dynamic heap allocations in the critical synthesis loop.
-- Provide JSON and binary serialization for the generated lookup table.
+### Member 4: Bitboard Optimization & AVX2 Acceleration
+* **File to produce**: `include/bitset_solver.hpp`
+* **Exact Tasks**:
+  1. Represent sets using `uint64_t` bitboards (bit $i = 1$ if cell $i \in R$).
+  2. Encode `is_subset(Post(s, u), R)` as: `(post_mask[s][u] & ~R_mask) == 0`.
+  3. Benchmark fixed-point loop convergence (target: $< 50\,\mu\text{s}$ on Intel Core Ultra 9).
 
-### Member 5: Simulation, Verification & Interactive Dashboard
-- Build the 24-hour continuous closed-loop simulation loop in `src/main_thermostat.cpp` under sinusoidal ambient weather:
-  $$T_e(t) = 8.5 + 3.5\sin\left(\frac{2\pi t}{86400}\right)$$
-- Implement a real-time interactive parameter dashboard (Dear ImGui / Matplotlib):
-  - Live sliders for $\alpha, \beta, T_{e,\min}, T_{e,\max}$.
-  - Instantaneous visual update of the safe invariant set $R^*$ as parameters shift.
-  - Continuous phase plots showing temperature staying strictly bounded in $[19.0, 22.0]^\circ\text{C}$.
-
----
-
-## 5. Modular Code Layout
-
-```
-2_room_thermostat/
-├── include/
-│   ├── thermostat_model.hpp   # Member 1: Thermal ODE & physics
-│   ├── interval_abstraction.hpp # Member 2: Discretization & transition masks
-│   ├── safety_solver.hpp      # Member 3: Pre(R) & Algorithme 1
-│   └── bitset_algebra.hpp     # Member 4: AVX2/bitboard set algebra
-├── src/
-│   ├── safety_solver.cpp      # Core fixed-point solver
-│   └── main_thermostat.cpp    # Member 5: Closed-loop tests & GUI
-└── CMakeLists.txt             # Modular build file
-```
+### Member 5: Closed-Loop Simulation & Trace Verification
+* **File to produce**: `src/main_thermostat.cpp`
+* **Exact Tasks**:
+  1. Simulate closed-loop operation for $86,400$ s (24 hours) with variable weather:
+     $$T_e(t) = 8.5 + 3.5\sin\left(\frac{2\pi t}{86400}\right)$$
+  2. Record $(t, T(t), u(t), T_e(t))$ to `thermostat_sim.csv`.
+  3. Assert 0 safety violations: $19.0 \le T(t) \le 22.0$ for all $t$.
 
 ---
 
-## 6. Definition of Done
-1. Fixed-point loop terminates in $< 100\,\mu\text{s}$ with verified maximal invariant set $R^*$.
-2. Continuous closed-loop simulation runs for $100,000$ seconds without leaving $[19.0, 22.0]^\circ\text{C}$.
-3. Mathematical proof of continuous boundary safety matches code outputs exactly.
+## 3. Build & Run
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+./build/room_thermostat
+```

@@ -1,59 +1,47 @@
-# High-Performance Symbolic Control of Nonlinear Systems
+# Symbolic Control of Nonlinear Systems (C++20 & CUDA)
 
-Hardware-accelerated C++20, OpenMP, and CUDA implementation of discrete abstractions, safety invariance synthesis, backward reachability games, and compositional Assume-Guarantee contracts for nonlinear cyber-physical systems under temporal logic specifications.
+Formal controller synthesis for nonlinear cyber-physical systems using discrete abstractions, safety invariance games, and compositional Assume-Guarantee contracts.
 
-### Academic Reference
-> **"Approches symboliques pour le contrôle des systèmes non linéaires"**  
-> Antoine Girard, Pierre-Jean Meyer, Adnane Saoud (*Techniques de l'Ingénieur*, Septembre 2024, Ref. S7467).  
-> **Course**: Theory of Computation — Fall 2026 — Instructor: **Prof. Adnane Saoud** (UM6P College of Computing).
-
----
-
-## 1. High-Performance Hardware & Architecture Stack
-
-* **CPU**: Intel Core Ultra 9 275HX (24 Cores / 24 Threads) $\to$ **OpenMP 5.0 + AVX2 SIMD Bit-Parallelism**.
-* **GPU**: NVIDIA GeForce RTX 5080 Laptop GPU (16 GB VRAM) $\to$ **NVIDIA CUDA C++ Kernel Acceleration**.
-* **Language Standard**: Modern C++20 (`constexpr`, `concepts`, Structure-of-Arrays memory layout).
-* **GUI / Dashboard**: Real-Time Interactive Telemetry (Dear ImGui + OpenGL).
+* **Reference**: *"Approches symboliques pour le contrôle des systèmes non linéaires"* (Girard, Meyer, Saoud, 2024, Ref. S7467).
+* **Course**: Theory of Computation — Prof. Adnane Saoud (UM6P College of Computing).
+* **Hardware Target**: Intel Core Ultra 9 275HX (24 Cores) + NVIDIA RTX 5080 Laptop GPU.
 
 ---
 
-## 2. Repository Structure & Project Modules
+## 1. Project Directory Structure
 
 ```
 AUTOMATA/
-├── 1_robot_navigation/      # Project 1: Unicycle robot under co-safe LTL / Product Automaton
-│   └── README.md            # OpenMP + CUDA GPU reachability game architecture
+├── 1_robot_navigation/      # Project 1: Unicycle robot reachability on Product Automaton
+│   └── README.md            # Exact task checklist for Members 1..5
 │
-├── 2_room_thermostat/       # Project 2: 1D thermal regulation & safety invariance
-│   └── README.md            # Algorithme 1 maximal invariant set & bitset vectorization
+├── 2_room_thermostat/       # Project 2: 1D thermal safety & Algorithme 1 fixed point
+│   └── README.md            # Exact task checklist for Members 1..5
 │
-├── 3_circular_building/     # Project 3: N-room circular building challenge
-│   └── README.md            # Assume-Guarantee contracts & linear O(N) scaling suite
+├── 3_circular_building/     # Project 3: Scalable N-room Assume-Guarantee challenge
+│   └── README.md            # Exact task checklist for Members 1..5
 │
-├── 42717210-s7467.pdf       # Prof. Adnane Saoud's reference paper
-├── .gitignore               # Configured for C++ builds (build/, bin/, *.o, etc.)
-└── README.md                # Unified project hub linking all modules
+├── 42717210-s7467.pdf       # Reference research paper
+└── README.md                # Root guide
 ```
 
 ---
 
-## 3. 5-Member Horizontal Engineering Pipeline
+## 2. 5-Member Responsibility Matrix
 
-Every team member actively implements and defends code across **all three projects**:
-
-| Member | Technical Specialization | Deliverables Across the 3 Projects |
-| :--- | :--- | :--- |
-| **Member 1** | **Continuous Physics & ODEs** | Unicycle forward kinematics, 1D thermal ODE, coupled $N$-room matrix equations, Metzler matrix / Kamke-Müller monotonicity proof. |
-| **Member 2** | **Discretization & Abstraction** | 3D grid cell hashing ($100\times 100\times 30$), temperature interval partition, local contract assumption bounds $(A_i, G_i)$. |
-| **Member 3** | **Formal Synthesis & Fixed Points** | 5-state specification DFA, Algorithme 1 maximal invariant set $R^*$, Assume-Guarantee compositional synthesis. |
-| **Member 4** | **C++ HPC, OpenMP & CUDA Architecture** | Contiguous 1D flat buffers, AVX2 bitboards, 24-thread OpenMP parallelization, CUDA `.cu` acceleration kernels for the RTX 5080. |
-| **Member 5** | **Simulation, Telemetry & Live GUI** | Monte Carlo noise runs, 24-hr sinusoidal weather simulations, automated benchmark suite ($N=3..1000$), live Dear ImGui dashboard. |
+| Member | Focus | Project 1: Robot | Project 2: Thermostat | Project 3: Circular Building |
+| :--- | :--- | :--- | :--- | :--- |
+| **Member 1** | **Physics & ODEs** | Unicycle kinematics & reachable box | 1D thermal ODE & boundary stability | Coupled $N$-room ODE & Metzler monotonicity |
+| **Member 2** | **Discretization** | 3D grid quantizer ($100\times 100\times 30$) | Interval partition & transition sets | Local room abstraction & assumptions $(A_i, G_i)$ |
+| **Member 3** | **Formal Synthesis**| 5-state DFA & Product Automaton game | Algorithme 1 maximal invariant set $R^*$ | Assume-Guarantee contract solver ($O(N)$) |
+| **Member 4** | **HPC & CUDA** | OpenMP 24-core sweep + CUDA kernel | Bitboard set operations ($< 50\,\mu\text{s}$) | Multi-room OpenMP/CUDA scaling ($N \le 1000$) |
+| **Member 5** | **Simulation** | 50 Monte Carlo noisy trajectories | 24-hr sinusoidal weather simulation | Benchmark scaling suite & heatmap traces |
 
 ---
 
-## 4. Detailed Project Guides
+## 3. Detailed Task Checklists
 
-* 🤖 **[Project 1: Mobile Robot Navigation (Product Automaton Reachability)](1_robot_navigation/README.md)**
-* 🌡️ **[Project 2: Room Thermostat (Safety Invariance Synthesis)](2_room_thermostat/README.md)**
-* 🏢 **[Project 3: Circular Building (Assume-Guarantee Challenge Engine)](3_circular_building/README.md)**
+Read the exact task checklist in each folder:
+* 🤖 **[1_robot_navigation/README.md](1_robot_navigation/README.md)**
+* 🌡️ **[2_room_thermostat/README.md](2_room_thermostat/README.md)**
+* 🏢 **[3_circular_building/README.md](3_circular_building/README.md)**
