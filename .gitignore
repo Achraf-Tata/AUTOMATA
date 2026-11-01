@@ -1,9 +1,10 @@
-# Exclude non-robot project contents (keep empty folders via .gitkeep)
-2_room_thermostat/*
-!2_room_thermostat/.gitkeep
-
-3_circular_building/*
-!3_circular_building/.gitkeep
+# Build artifacts and compiler outputs
+build/
+bin/
+*.obj
+*.o
+*.exe
+*.dll
 
 # Exclude figures, documentation, and MATLAB reference code
 figures/
@@ -11,15 +12,10 @@ docs/
 matlab_reference/
 *.pdf
 
-# Exclude non-robot root scripts
-main.py
-gui_heat.py
-gui_building.py
-run_benchmarks.py
-run_gui.bat
-
 # Python bytecode and temporary files
 __pycache__/
 *.py[cod]
 *$py.class
 *.log
+controller_cache*.npz
+extracted_pdf_text.txt

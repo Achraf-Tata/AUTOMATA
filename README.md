@@ -1,105 +1,59 @@
-# Symbolic Control of Nonlinear Systems - Mobile Robot Navigation
+# High-Performance Symbolic Control of Nonlinear Systems
 
-Implementation of discrete abstraction, backward reachability controller computation, and closed-loop simulation for a discrete-time unicycle mobile robot under linear temporal logic (LTL) specifications.
+Hardware-accelerated C++20, OpenMP, and CUDA implementation of discrete abstractions, safety invariance synthesis, backward reachability games, and compositional Assume-Guarantee contracts for nonlinear cyber-physical systems under temporal logic specifications.
 
-Reference:
-> "Approches symboliques pour le controle des systemes non lineaires"  
-> Antoine Girard, Pierre-Jean Meyer, Adnane Saoud (Techniques de l'Ingenieur, Septembre 2024, Ref. S7467).  
-> Course: Computation Theory - Fall 2026 - Instructor: Prof. Adnane Saoud (UM6P-CC).
-
----
-
-## System Dynamics and Specification
-
-### Continuous Model
-Discrete-time unicycle kinematics with bounded process disturbance noise:
-
-```
-x1(t+1) = x1(t) + T * u1(t) * cos(x3(t)) + T * w1(t)
-x2(t+1) = x2(t) + T * u1(t) * sin(x3(t)) + T * w2(t)
-x3(t+1) = x3(t) + T * u2(t) + T * w3(t)  (wrapped in [-pi, pi])
-```
-
-- State constraints: `x1 in [0, 10]` m, `x2 in [0, 10]` m, `x3 in [-pi, pi]` rad
-- Control constraints: linear velocity `u1 in [0.25, 1.0]` m/s, angular velocity `u2 in [-1.0, 1.0]` rad/s
-- Disturbance bounds: `w in [-0.05, 0.05]^3`
-- Sampling time: `T = 1.0` s
-
-### Specification and Automaton
-The robot must satisfy the co-Buchi specification:
-> "Visit region R1 or region R2 (exclusive), then reach final target region R3, while avoiding obstacle region R4 at all times."
-
-The deterministic finite automaton (DFA) has 5 discrete states:
-- `q1`: Initial state (seeking R1 or R2, avoiding R4)
-- `q2`: Waymark R1 visited (heading to Target R3, avoiding R2 and R4)
-- `q3`: Waymark R2 visited (heading to Target R3, avoiding R1 and R4)
-- `q4`: Target R3 reached (goal achieved)
-- `q5`: Trap sink state (collision with obstacle R4)
-
-### Abstraction and Synthesis
-- State discretization: `100 x 100 x 30 = 300,000` grid cells
-- Control discretization: `3 x 5 = 15` discrete input pairs
-- Fixed-point controlled backward reachability algorithm compiled with Numba JIT.
+### Academic Reference
+> **"Approches symboliques pour le contrôle des systèmes non linéaires"**  
+> Antoine Girard, Pierre-Jean Meyer, Adnane Saoud (*Techniques de l'Ingénieur*, Septembre 2024, Ref. S7467).  
+> **Course**: Theory of Computation — Fall 2026 — Instructor: **Prof. Adnane Saoud** (UM6P College of Computing).
 
 ---
 
-## Repository Structure
+## 1. High-Performance Hardware & Architecture Stack
+
+* **CPU**: Intel Core Ultra 9 275HX (24 Cores / 24 Threads) $\to$ **OpenMP 5.0 + AVX2 SIMD Bit-Parallelism**.
+* **GPU**: NVIDIA GeForce RTX 5080 Laptop GPU (16 GB VRAM) $\to$ **NVIDIA CUDA C++ Kernel Acceleration**.
+* **Language Standard**: Modern C++20 (`constexpr`, `concepts`, Structure-of-Arrays memory layout).
+* **GUI / Dashboard**: Real-Time Interactive Telemetry (Dear ImGui + OpenGL).
+
+---
+
+## 2. Repository Structure & Project Modules
 
 ```
-automata/
-├── 1_robot_navigation/
-│   ├── symbolic_control.py          # Continuous unicycle dynamics and backward reachability
-│   ├── gui_robot.py                 # Standalone desktop interface with direct map manipulation
-│   ├── controller_cache_100x100x30.npz # Precomputed reachability controller (300k cells)
-│   └── run.py                       # Standalone local entry point
+AUTOMATA/
+├── 1_robot_navigation/      # Project 1: Unicycle robot under co-safe LTL / Product Automaton
+│   └── README.md            # OpenMP + CUDA GPU reachability game architecture
 │
-├── 2_room_thermostat/               # Project folder
-│   └── .gitkeep
+├── 2_room_thermostat/       # Project 2: 1D thermal regulation & safety invariance
+│   └── README.md            # Algorithme 1 maximal invariant set & bitset vectorization
 │
-├── 3_circular_building/             # Project folder
-│   └── .gitkeep
+├── 3_circular_building/     # Project 3: N-room circular building challenge
+│   └── README.md            # Assume-Guarantee contracts & linear O(N) scaling suite
 │
-├── gui_robot.py                     # Root shortcut to launch robot interface
-├── .gitignore                       # Repository ignore rules
-└── README.md                        # Documentation
+├── 42717210-s7467.pdf       # Prof. Adnane Saoud's reference paper
+├── .gitignore               # Configured for C++ builds (build/, bin/, *.o, etc.)
+└── README.md                # Unified project hub linking all modules
 ```
 
 ---
 
-## Requirements and Installation
+## 3. 5-Member Horizontal Engineering Pipeline
 
-Python 3.9+ with the following packages:
+Every team member actively implements and defends code across **all three projects**:
 
-```powershell
-pip install numpy matplotlib numba
-```
-
-*(Standard `tkinter` comes bundled with Python on Windows and macOS).*
+| Member | Technical Specialization | Deliverables Across the 3 Projects |
+| :--- | :--- | :--- |
+| **Member 1** | **Continuous Physics & ODEs** | Unicycle forward kinematics, 1D thermal ODE, coupled $N$-room matrix equations, Metzler matrix / Kamke-Müller monotonicity proof. |
+| **Member 2** | **Discretization & Abstraction** | 3D grid cell hashing ($100\times 100\times 30$), temperature interval partition, local contract assumption bounds $(A_i, G_i)$. |
+| **Member 3** | **Formal Synthesis & Fixed Points** | 5-state specification DFA, Algorithme 1 maximal invariant set $R^*$, Assume-Guarantee compositional synthesis. |
+| **Member 4** | **C++ HPC, OpenMP & CUDA Architecture** | Contiguous 1D flat buffers, AVX2 bitboards, 24-thread OpenMP parallelization, CUDA `.cu` acceleration kernels for the RTX 5080. |
+| **Member 5** | **Simulation, Telemetry & Live GUI** | Monte Carlo noise runs, 24-hr sinusoidal weather simulations, automated benchmark suite ($N=3..1000$), live Dear ImGui dashboard. |
 
 ---
 
-## Running the Application
+## 4. Detailed Project Guides
 
-Launch the robot navigation interface:
-
-```powershell
-python 1_robot_navigation/run.py
-```
-
-### Interface Features
-
-1. **Direct Map Manipulation**:
-   - Drag the robot avatar to reposition starting coordinates `(x1, x2)`.
-   - Drag inside any region (`R1`, `R2`, `R3`, `R4`) to reposition it.
-   - Drag the corner handles of Obstacle `R4` to resize its dimensions directly on the map.
-   - Click empty space on the arena to set the robot position.
-
-2. **Controller Advisory Dialog**:
-   - If regions or obstacles are moved or resized, the interface prompts the user before running, offering to recalculate the reachability controller for the new layout or proceed with the existing controller.
-
-3. **Multi-Trajectory Noise Simulation**:
-   - The `50 Noise Runs` button simulates 50 independent closed-loop trajectories under random disturbance noise `w in [-0.05, 0.05]^3`.
-   - Plots the trajectory bundle with individual markers to visualize closed-loop robustness under process noise.
-
-4. **Telemetry and DFA Tracking**:
-   - Real-time display of position, heading angle, active control inputs `(v, w)`, time step, and active automaton state.
+* 🤖 **[Project 1: Mobile Robot Navigation (Product Automaton Reachability)](1_robot_navigation/README.md)**
+* 🌡️ **[Project 2: Room Thermostat (Safety Invariance Synthesis)](2_room_thermostat/README.md)**
+* 🏢 **[Project 3: Circular Building (Assume-Guarantee Challenge Engine)](3_circular_building/README.md)**
