@@ -31,10 +31,10 @@ AUTOMATA/
 
 | Member | Focus | Project 1: Robot | Project 2: Thermostat | Project 3: Circular Building |
 | :--- | :--- | :--- | :--- | :--- |
-| **Member 1** | **Physics & ODEs** | Unicycle kinematics & reachable box | 1D thermal ODE & boundary stability | Coupled $N$-room ODE & Metzler monotonicity |
-| **Member 2** | **Discretization** | 3D grid quantizer ($100\times 100\times 30$) | Interval partition & transition sets | Local room abstraction & assumptions $(A_i, G_i)$ |
-| **Member 3** | **Formal Synthesis**| 5-state DFA & Product Automaton game | Algorithme 1 maximal invariant set $R^*$ | Assume-Guarantee contract solver ($O(N)$) |
-| **Member 4** | **HPC & CUDA** | OpenMP 24-core sweep + CUDA kernel | Bitboard set operations ($< 50\,\mu\text{s}$) | Multi-room OpenMP/CUDA scaling ($N \le 1000$) |
+| **Member 1** | **Physics & ODEs** | Unicycle kinematics & reachable box | 1D thermal ODE & boundary stability | Coupled N-room ODE & Metzler monotonicity |
+| **Member 2** | **Discretization** | 3D grid quantizer (100 x 100 x 30) | Interval partition & transition sets | Local room abstraction & assumptions (Ai, Gi) |
+| **Member 3** | **Formal Synthesis**| 5-state DFA & Product Automaton game | Algorithme 1 maximal invariant set R* | Assume-Guarantee contract solver O(N) |
+| **Member 4** | **HPC & CUDA** | OpenMP 24-core sweep + CUDA kernel | Bitboard set operations (< 50 µs) | Multi-room OpenMP/CUDA scaling (N <= 1000) |
 | **Member 5** | **Simulation** | 50 Monte Carlo noisy trajectories | 24-hr sinusoidal weather simulation | Benchmark scaling suite & heatmap traces |
 
 ---
