@@ -15,59 +15,67 @@ $$
 * **Parameters**: Heat loss $\alpha = 0.05\text{ s}^{-1}$, heater power $\beta = 1.0\text{ K/s}$.
 * **Domains**: State $T \in [15.0, 25.0]^\circ\text{C}$, weather disturbance $T_e \in [5.0, 12.0]^\circ\text{C}$, heater $u \in \{0, 1\}$.
 * **Safety Specification**: Maintain $T(t) \in [19.0, 22.0]^\circ\text{C}$ for all $t \ge 0$.
+* **Zero Dependencies**: This project is 100% self-contained. It compiles and runs independently with no dependencies on other folders.
 
 ---
 
-## 2. Exact Member Task Assignments
+## 2. Exact Member Task Breakdown (What & How)
 
 ### Member 1: Thermal ODE & Continuous Boundary Stability
 * **File to produce**: `include/thermostat_model.hpp`
-* **Exact Tasks**:
-  1. Implement `double step_euler(double T, int u, double Te, double dt)`.
-  2. Implement `std::pair<double, double> step_interval(double T_min, double T_max, int u, double Te_min, double Te_max, double dt)`.
-  3. Validate continuous boundary stability:
-     * Check $\dot{T} > 0$ at $T = 19.0$ with $u = 1$ under worst-case $T_{e,\min} = 5.0$.
-     * Check $\dot{T} < 0$ at $T = 22.0$ with $u = 0$ under worst-case $T_{e,\max} = 12.0$.
+* **Functions to implement**:
+  1. `double step_euler(double T, int u, double Te, double dt)`
+     * **What it does**: Computes continuous room temperature at step $t+1$.
+     * **How it does it**: Evaluates forward Euler formula: $T_{t+1} = (1 - \alpha \cdot dt) T_t + \alpha \cdot dt \cdot T_e + \beta \cdot dt \cdot u$.
+  2. `std::pair<double, double> step_interval(double T_min, double T_max, int u, double Te_min, double Te_max, double dt)`
+     * **What it does**: Computes the exact reachable interval $[\underline{T}', \overline{T}']$ for a box of continuous temperatures under all weather disturbances.
+     * **How it does it**: By monotonicity: $\underline{T}' = (1 - \alpha \cdot dt) \underline{T} + \alpha \cdot dt \cdot \underline{T}_e + \beta \cdot dt \cdot u$ and $\overline{T}' = (1 - \alpha \cdot dt) \overline{T} + \alpha \cdot dt \cdot \overline{T}_e + \beta \cdot dt \cdot u$.
+  3. `bool verify_continuous_boundary_invariance()`
+     * **What it does**: Analytically proves that the continuous boundary can never be breached.
+     * **How it does it**: Asserts that at $T = 19.0$, $\dot{T}(19, u=1, T_e=5.0) = -0.05(19 - 5) + 1.0 = +0.30 > 0$, and at $T = 22.0$, $\dot{T}(22, u=0, T_e=12.0) = -0.05(22 - 12) = -0.50 < 0$.
 
 ### Member 2: Interval Discretizer & Transition Graph
 * **File to produce**: `include/interval_abstraction.hpp`
-* **Exact Tasks**:
-  1. Partition $[15.0, 25.0]^\circ\text{C}$ into $M = 50$ intervals ($0.2^\circ\text{C}$ each) + 1 unsafe sink state.
-  2. Implement `int quantize(double T)` and `std::pair<double, double> cell_bounds(int cell_id)`.
-  3. Precompute transition set `std::vector<int> post(int cell_id, int u)` under disturbance interval $T_e \in [5.0, 12.0]$.
+* **Functions to implement**:
+  1. `int quantize(double T)` / `std::pair<double, double> cell_bounds(int cell_id)`
+     * **What it does**: Converts continuous temperature to discrete cell index $s \in [0, M-1]$ (with $M = 50$, width $0.2^\circ\text{C}$), and returns continuous interval bounds $[\underline{T}_s, \overline{T}_s]$.
+     * **How it does it**: Computes $s = \lfloor (T - 15.0) / 0.2 \rfloor$, clamped to $[0, M-1]$. Values outside become sink index $M$.
+  2. `std::vector<int> compute_post_cells(int cell_id, int u)`
+     * **What it does**: Computes all successor discrete cells reachable from cell $s$ under action $u \in \{0, 1\}$.
+     * **How it does it**: Calls Member 1's `step_interval` on cell bounds $[\underline{T}_s, \overline{T}_s]$ with disturbance range $[5.0, 12.0]$, quantizes resulting bounds $[\underline{T}', \overline{T}']$, and returns all integer cell IDs in range $[c_{\min}', c_{\max}']$.
 
 ### Member 3: Predecessor Operator & Algorithme 1 Solver
 * **Files to produce**: `include/safety_solver.hpp`, `src/safety_solver.cpp`
-* **Exact Tasks**:
-  1. Implement the predecessor operator:
-
-$$
-Pre(R) = \lbrace s \in S \mid \exists u \in \{0, 1\}, \; Post(s, u) \subseteq R \rbrace
-$$
-
-  2. Implement **Algorithme 1** (Fixed-point iteration):
-     * Initialize $R_0 = S_{\text{safe}}$.
-     * Loop $R_{k+1} = R_k \cap Pre(R_k)$ until $R_{k+1} = R_k = R^*$.
-  3. Output lookup table: `int controller[M]` where $u^*(s) \in \{0, 1\}$.
+* **Functions to implement**:
+  1. `Set pre_operator(const Set& R, const TransitionTable& post_table)`
+     * **What it does**: Computes the set of states from which the controller can force the system to stay inside $R$.
+     * **How it does it**: For each state $s \in S$, checks if there exists $u \in \{0, 1\}$ such that for all $s' \in Post(s, u)$, $s' \in R$. If true, adds $s$ to $Pre(R)$.
+  2. `Set solve_maximal_invariant_set(const Set& S_safe, ...)`
+     * **What it does**: Executes **Algorithme 1** to compute the maximal controlled invariant set $R^*$.
+     * **How it does it**: Initializes $R = S_{\text{safe}}$. Iteratively computes $R_{\text{next}} = R \cap Pre(R)$. Terminates when $R_{\text{next}} == R$, returning $R^*$.
+  3. `void extract_controller(const Set& R_star, int controller_table[])`
+     * **What it does**: Extracts deterministic control policy $u^*(s)$.
+     * **How it does it**: For each state $s \in R^*$, sets $u^*(s) = 0$ if $Post(s, 0) \subseteq R^*$, else $u^*(s) = 1$ if $Post(s, 1) \subseteq R^*$.
 
 ### Member 4: Bitboard Optimization & AVX2 Acceleration
 * **File to produce**: `include/bitset_solver.hpp`
-* **Exact Tasks**:
-  1. Represent sets using `uint64_t` bitboards (bit $i = 1$ if cell $i \in R$).
-  2. Encode `is_subset(Post(s, u), R)` as: `(post_mask[s][u] & ~R_mask) == 0`.
-  3. Benchmark fixed-point loop convergence (target: $< 50\text{ }\mu\text{s}$ on Intel Core Ultra 9).
+* **Functions to implement**:
+  1. `uint64_t compute_pre_bitset(uint64_t R_mask, const uint64_t post_masks[][2])`
+     * **What it does**: Computes $Pre(R)$ in microseconds using hardware bitboards.
+     * **How it does it**: For each state $s$, tests inclusion via bitwise logic: `bool safe_u0 = ((post_masks[s][0] & ~R_mask) == 0); bool safe_u1 = ((post_masks[s][1] & ~R_mask) == 0);`. Sets bit $s$ in output if `safe_u0 || safe_u1`.
+  2. `uint64_t solve_fixed_point_bitset(uint64_t S_safe_mask, ...)`
+     * **What it does**: Runs the entire Algorithme 1 loop in $< 50\,\mu\text{s}$.
+     * **How it does it**: Executes `while ((R_next = R & compute_pre_bitset(R, ...)) != R) R = R_next;`. Uses CPU `_mm_popcnt_u64` to verify convergence in 1 clock cycle.
 
 ### Member 5: Closed-Loop Simulation & Trace Verification
 * **File to produce**: `src/main_thermostat.cpp`
-* **Exact Tasks**:
-  1. Simulate closed-loop operation for $86,400\text{ s}$ (24 hours) with variable weather:
-
-$$
-T_e(t) = 8.5 + 3.5 \sin\Big(\frac{2\pi t}{86400}\Big)
-$$
-
-  2. Record $(t, T(t), u(t), T_e(t))$ to `thermostat_sim.csv`.
-  3. Assert 0 safety violations: $19.0 \le T(t) \le 22.0$ for all $t$.
+* **Functions to implement**:
+  1. `void run_simulation(double T0, double duration_sec, const char* csv_out)`
+     * **What it does**: Simulates closed-loop 24-hour operation under ambient weather variations.
+     * **How it does it**: At each 1-second step, calculates $T_e(t) = 8.5 + 3.5\sin(2\pi t / 86400)$, quantizes continuous $T(t) \to s$, retrieves $u = \text{controller}[s]$, integrates forward via Member 1's `step_euler()`, and logs $(t, T(t), u, T_e(t))$ to CSV.
+  2. `bool assert_safety_guarantees(const char* csv_in)`
+     * **What it does**: Formally verifies that 0 safety violations occurred.
+     * **How it does it**: Reads recorded temperatures and asserts $19.0 \le T(t) \le 22.0$ for all $86,400$ recorded points.
 
 ---
 
