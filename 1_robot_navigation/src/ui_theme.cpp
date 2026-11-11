@@ -96,14 +96,23 @@ void setup_theme() {
     colors[ImGuiCol_ModalWindowDimBg]     = ImVec4(0.10f, 0.12f, 0.16f, 0.50f);
 }
 
-bool begin_card(const char* str_id, const ImVec2& size) {
+bool begin_card(const char* str_id, float width, float height) {
     ImGui::PushStyleColor(ImGuiCol_ChildBg, colors::card_bg);
     ImGui::PushStyleColor(ImGuiCol_Border, colors::card_border);
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 7.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14.0f, 12.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 14.0f));
 
-    return ImGui::BeginChild(str_id, size, true, ImGuiWindowFlags_NoScrollbar);
+    ImGuiChildFlags child_flags = ImGuiChildFlags_Borders;
+    if (height <= 0.0f) {
+        child_flags |= ImGuiChildFlags_AutoResizeY;
+    }
+    return ImGui::BeginChild(str_id, ImVec2(width, height), child_flags,
+                             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+}
+
+bool begin_card(const char* str_id, const ImVec2& size) {
+    return begin_card(str_id, size.x, size.y);
 }
 
 void end_card() {

@@ -35,7 +35,8 @@ void setup_theme();
 void load_fonts();
 
 // Custom widgets matching the reference design
-bool begin_card(const char* str_id, const ImVec2& size = {0.0f, 0.0f});
+bool begin_card(const char* str_id, float width, float height = 0.0f);
+bool begin_card(const char* str_id, const ImVec2& size);
 void end_card();
 
 bool outline_button(const char* label, const ImVec2& size = {0.0f, 0.0f});

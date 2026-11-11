@@ -28,14 +28,6 @@ enum class RunStatus {
     Uncontrollable
 };
 
-struct MonteCarloStats {
-    int   total_runs   = 0;
-    int   successful   = 0;
-    int   failed       = 0;
-    int   timeout      = 0;
-    float success_rate = 0.0f;
-};
-
 struct AppState {
     // --- Arena configuration ---
     grid::RegionConfig regions;
@@ -79,13 +71,6 @@ struct AppState {
     RunStatus       last_status    = RunStatus::Idle;
     unicycle::State final_state    = {1.0, 2.0, 0.0};
     int             final_step     = 0;
-
-    // --- Monte Carlo analysis ---
-    bool  mc_running   = false;
-    int   mc_samples   = 50;
-    float mc_progress  = 0.0f;
-    MonteCarloStats mc_stats;
-    std::vector<std::vector<unicycle::State>> mc_trajectories;
 
     // --- UI toggles & interaction ---
     bool show_grid            = true;

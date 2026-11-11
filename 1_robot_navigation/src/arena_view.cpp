@@ -185,23 +185,9 @@ void render_arena_card(AppState& app, float width, float height) {
     draw_corner_handles(app.regions.r4_x0, app.regions.r4_y0, app.regions.r4_x1, app.regions.r4_y1, IM_COL32(239, 68, 68, 255));
 
     // -------------------------------------------------------------------------
-    // Trajectory bundle (Translucent cyan curves)
-    // -------------------------------------------------------------------------
-    if (app.show_trajectories && !app.mc_trajectories.empty()) {
-        ImU32 bundle_col = IM_COL32(56, 189, 248, 50);
-        for (const auto& traj : app.mc_trajectories) {
-            for (size_t i = 1; i < traj.size(); ++i) {
-                ImVec2 p0 = world_to_screen(static_cast<float>(traj[i - 1].x), static_cast<float>(traj[i - 1].y), plot_origin, scale);
-                ImVec2 p1 = world_to_screen(static_cast<float>(traj[i].x),     static_cast<float>(traj[i].y),     plot_origin, scale);
-                dl->AddLine(p0, p1, bundle_col, 1.2f);
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
     // Active path (Bold navy polyline with soft cyan glow and step nodes)
     // -------------------------------------------------------------------------
-    if (app.active_trajectory.size() > 1) {
+    if (app.show_trajectories && app.active_trajectory.size() > 1) {
         ImU32 glow_col = IM_COL32(56, 189, 248, 85);
         ImU32 line_col = IM_COL32(15, 59, 117, 255);
 
@@ -223,10 +209,20 @@ void render_arena_card(AppState& app, float width, float height) {
         }
     }
 
+    // Faint initial pose indicator if the robot moved to the goal
+    if (app.has_run_result && !app.sim_running) {
+        ImVec2 start_pt = world_to_screen(static_cast<float>(app.robot_start.x),
+                                          static_cast<float>(app.robot_start.y),
+                                          plot_origin, scale);
+        dl->AddCircle(start_pt, 7.0f, IM_COL32(148, 163, 184, 180), 16, 1.4f);
+        dl->AddCircleFilled(start_pt, 2.5f, IM_COL32(148, 163, 184, 180));
+    }
+
     // -------------------------------------------------------------------------
     // Robot directional representation
     // -------------------------------------------------------------------------
-    const unicycle::State& rp = app.sim_running ? app.sim_robot_pos : app.robot_start;
+    // When the simulation finishes or reaches the goal, leave the robot at its final state!
+    const unicycle::State& rp = (app.sim_running || app.has_run_result) ? app.sim_robot_pos : app.robot_start;
     ImVec2 r_screen = world_to_screen(static_cast<float>(rp.x), static_cast<float>(rp.y), plot_origin, scale);
 
     float th = -static_cast<float>(rp.theta);
@@ -330,8 +326,16 @@ void render_arena_card(AppState& app, float width, float height) {
             app.dragging_robot_rot = false;
 
             if (hover_robot_tip) {
+                if (app.has_run_result) {
+                    app.robot_start = app.sim_robot_pos;
+                    app.has_run_result = false;
+                }
                 app.dragging_robot_rot = true;
             } else if (hover_robot_center) {
+                if (app.has_run_result) {
+                    app.robot_start = app.sim_robot_pos;
+                    app.has_run_result = false;
+                }
                 app.dragging_robot_pos = true;
             } else {
                 // Check region corners
@@ -361,6 +365,10 @@ void render_arena_card(AppState& app, float width, float height) {
             }
         } else if (rmb_click && (hover_robot_center || hover_robot_tip)) {
             // Right-click drag rotates the robot
+            if (app.has_run_result) {
+                app.robot_start = app.sim_robot_pos;
+                app.has_run_result = false;
+            }
             app.dragging_robot_rot = true;
         }
     }
@@ -431,7 +439,7 @@ void render_arena_card(AppState& app, float width, float height) {
     if (is_hovered) {
         if (hover_robot_center || hover_robot_tip || app.dragging_robot_pos || app.dragging_robot_rot) {
             ImGui::SetTooltip("Robot Pose:\nPosition: (%.2f m, %.2f m)\nHeading:  %.1f deg\n[LMB Drag Center]: Move robot\n[RMB or Drag Tip]: Rotate heading",
-                              app.robot_start.x, app.robot_start.y, app.robot_start.theta * 180.0 / M_PI);
+                              rp.x, rp.y, rp.theta * 180.0 / M_PI);
         } else {
             ImGui::SetTooltip("Coordinates: X = %.2f m, Y = %.2f m", mx, my);
         }

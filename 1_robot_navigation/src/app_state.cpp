@@ -79,13 +79,6 @@ void init_app_state(AppState& app) {
     app.final_state = app.robot_start;
     app.final_step = 0;
 
-    // Clean Monte Carlo state
-    app.mc_running = false;
-    app.mc_samples = 50;
-    app.mc_progress = 0.0f;
-    app.mc_stats = {};
-    app.mc_trajectories.clear();
-
     // Synthesis clean state
     app.solving = false;
     app.solve_iterations = 0;

@@ -125,13 +125,8 @@ int main() {
         float total_w = io.DisplaySize.x - 24.0f;
         float total_h = io.DisplaySize.y - 20.0f;
 
-        // 1. Top Navigation Bar
-        robot_nav::ui::render_header_bar(app, total_w);
-        ImGui::Spacing();
-
-        // 2. Responsive Main Layout: Left Arena + Right Control Cards
-        float nav_bar_h = 52.0f;
-        float body_h    = total_h - nav_bar_h - 10.0f;
+        // Responsive Main Layout: Left Arena + Right Control Cards
+        float body_h = total_h;
 
         float right_panel_w = std::clamp(total_w * 0.38f, 380.0f, 540.0f);
         float left_arena_w  = total_w - right_panel_w - 12.0f;
@@ -139,7 +134,7 @@ int main() {
         // Left Column (Arena + Legend)
         ImGui::BeginGroup();
         float legend_h  = 66.0f;
-        float arena_h   = body_h - legend_h - 8.0f;
+        float arena_h   = body_h - legend_h - 10.0f;
         robot_nav::arena::render_arena_card(app, left_arena_w, arena_h);
         ImGui::Spacing();
         robot_nav::arena::render_legend_card(app, left_arena_w);
@@ -149,8 +144,8 @@ int main() {
 
         // Right Column (Scrollable so cards never clip off screen edges)
         ImGui::BeginChild("##right_column_scroll", ImVec2(right_panel_w, body_h), false,
-                          ImGuiWindowFlags_NoScrollbar);
-        robot_nav::ui::render_right_cards(app, right_panel_w - 4.0f);
+                          ImGuiWindowFlags_None);
+        robot_nav::ui::render_right_cards(app, right_panel_w - 8.0f);
         ImGui::EndChild();
 
         // 3. Modal Dialogs (Edge Case Alerts & Arena Modified Warning)
