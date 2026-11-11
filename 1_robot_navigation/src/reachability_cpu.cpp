@@ -2,139 +2,143 @@
 // reachability_cpu.cpp — Member 4
 // =============================================================================
 #include "reachability_cpu.hpp"
-#include "unicycle_model.hpp"
 #include <omp.h>
-#include <cmath>
-#include <algorithm>
 #include <fstream>
 #include <cstring>
-#include <limits>
+#include <algorithm>
 
 namespace solver {
 
-// ---------------------------------------------------------------------------
-// Internal helper: worst-case value over all successors of (cell, u, q)
-// ---------------------------------------------------------------------------
-
-/// Given a source cell index and a control, finds all grid cells that can be
-/// reached (using the footprint table as a bounding box, then checking each
-/// candidate), evaluates V at each successor under the DFA transition,
-/// and returns the MAXIMUM (worst-case) V.
-static float worst_case_value(
-    int c1, int c2, int c3,
-    int q,
-    int ui,
-    const grid::FootprintTable& footprint,
-    const std::vector<float>&   V,
-    const grid::RegionConfig&   regions)
+int solve_reachability_openmp(
+    std::vector<float>&              V,
+    std::vector<uint8_t>&            ctrl,
+    const grid::RegionConfig&        regions,
+    const grid::AbstractionTables&   abs_tables,
+    ProgressCallback                 callback)
 {
-    const auto& fp  = footprint[ui][c3];
-    const auto& u   = unicycle::ALL_CONTROLS[ui];
-    float worst = 0.0f;
-
-    // Iterate over the bounding box of reachable cells
-    int x_lo = std::max(0,            c1 + fp.dc1_min);
-    int x_hi = std::min(grid::NX - 1, c1 + fp.dc1_max);
-    int y_lo = std::max(0,            c2 + fp.dc2_min);
-    int y_hi = std::min(grid::NY - 1, c2 + fp.dc2_max);
-
-    for (int nc1 = x_lo; nc1 <= x_hi; ++nc1) {
-        for (int nc2 = y_lo; nc2 <= y_hi; ++nc2) {
-            // For each candidate theta offset
-            for (int nc3 = 0; nc3 < grid::NTHETA; ++nc3) {
-                // Confirm reachability: check if cell centre of (nc1,nc2,nc3)
-                // is inside the reachable box of the source cell under u.
-                unicycle::State src_ctr = grid::cell_center({c1, c2, c3});
-                unicycle::Box src_box {
-                    src_ctr.x - grid::DX / 2,  src_ctr.x + grid::DX / 2,
-                    src_ctr.y - grid::DY / 2,  src_ctr.y + grid::DY / 2,
-                    src_ctr.theta - grid::DTHETA / 2, src_ctr.theta + grid::DTHETA / 2
-                };
-                auto rb = unicycle::compute_reachable_box(src_box, u, 0.05, 1.0);
-                unicycle::State dst_ctr = grid::cell_center({nc1, nc2, nc3});
-                bool in_box = (dst_ctr.x >= rb.x_min && dst_ctr.x <= rb.x_max &&
-                               dst_ctr.y >= rb.y_min && dst_ctr.y <= rb.y_max);
-                if (!in_box) continue;
-
-                int label = grid::get_region_label(dst_ctr.x, dst_ctr.y, regions);
-                int q_next = automaton::dfa_transition(q, label);
-                float v_next = V[automaton::product_index(q_next, grid::flat_index(nc1, nc2, nc3))];
-                worst = std::max(worst, v_next);
-            }
+    // 1. Compute 2D label matrix for current region layout
+    uint8_t lab_2d[grid::NX][grid::NY];
+    for (int i1 = 0; i1 < grid::NX; ++i1) {
+        double x = grid::X_MIN + (i1 + 0.5) * grid::DX;
+        for (int i2 = 0; i2 < grid::NY; ++i2) {
+            double y = grid::Y_MIN + (i2 + 0.5) * grid::DY;
+            lab_2d[i1][i2] = static_cast<uint8_t>(grid::get_region_label(x, y, regions));
         }
     }
-    return worst;
-}
 
-// ---------------------------------------------------------------------------
-// Main solver
-// ---------------------------------------------------------------------------
+    int it = 0;
+    while (it < MAX_ITERATIONS) {
+        ++it;
+        std::vector<float> Vp = V;
+        int changes = 0;
 
-int solve_reachability_openmp(
-    std::vector<float>&         V,
-    std::vector<uint8_t>&       ctrl,
-    const grid::RegionConfig&   regions,
-    const grid::FootprintTable& footprint,
-    ProgressCallback            callback)
-{
-    int iter = 0;
-    float delta = automaton::INF;
+        #pragma omp parallel for reduction(+:changes) schedule(static)
+        for (int i1 = 0; i1 < grid::NX; ++i1) {
+            for (int i2 = 0; i2 < grid::NY; ++i2) {
+                int lab = lab_2d[i1][i2];
+                for (int i3 = 0; i3 < grid::NTHETA; ++i3) {
+                    int cell_flat = grid::flat_index(i1, i2, i3);
 
-    while (delta > CONVERGENCE_EPS && iter < MAX_ITERATIONS) {
-        delta = 0.0f;
-        // Atomic max for delta across threads
-        // We use a local per-thread delta, then reduce.
-        std::vector<float> local_deltas(omp_get_max_threads(), 0.0f);
+                    for (int psi = 1; psi <= automaton::NDFA; ++psi) {
+                        int pidx_curr = automaton::product_index(psi, cell_flat);
+                        if (V[pidx_curr] < 1e8f) {
+                            continue; // already controllable
+                        }
 
-        // Parallelise over DFA states and x-cells (5 * 100 = 500 tasks)
-        #pragma omp parallel for schedule(dynamic, 1)
-        for (int qc1 = 0; qc1 < automaton::NDFA * grid::NX; ++qc1) {
-            int q  = (qc1 / grid::NX) + 1;
-            int c1 = qc1 % grid::NX;
-            int tid = omp_get_thread_num();
-                for (int c2 = 0; c2 < grid::NY; ++c2) {
-                    for (int c3 = 0; c3 < grid::NTHETA; ++c3) {
-                        // Goal and sink states do not change
-                        if (q == 4 || q == 5) continue;
+                        int psi_succ = automaton::dfa_transition(psi, lab);
+                        int pidx_succ = automaton::product_index(psi_succ, cell_flat);
 
-                        int pidx = automaton::product_index(q, grid::flat_index(c1, c2, c3));
-                        float best_v   = automaton::INF;
-                        uint8_t best_u = 255;
+                        // If control at successor automaton state already resolved
+                        if (ctrl[pidx_succ] != 0) {
+                            V[pidx_curr] = static_cast<float>(it);
+                            ++changes;
+                            continue;
+                        }
 
-                        for (int ui = 0; ui < 15; ++ui) {
-                            float wv = worst_case_value(c1, c2, c3, q, ui,
-                                                        footprint, V, regions);
-                            if (wv < best_v) {
-                                best_v = wv;
-                                best_u = static_cast<uint8_t>(ui);
+                        // Search for an enabling control sigma (1..15)
+                        uint8_t found_sigma = 0;
+                        for (int s = 0; s < 15; ++s) {
+                            if (!abs_tables.get_valid1(i1, i3, s) || !abs_tables.get_valid2(i2, i3, s)) {
+                                continue;
+                            }
+
+                            int r1_lo = abs_tables.get_c1_min(i1, i3, s);
+                            int r1_hi = abs_tables.get_c1_max(i1, i3, s);
+                            int r2_lo = abs_tables.get_c2_min(i2, i3, s);
+                            int r2_hi = abs_tables.get_c2_max(i2, i3, s);
+                            int r3_lo = abs_tables.get_c3_min(i3, s);
+                            int r3_hi = abs_tables.get_c3_max(i3, s);
+
+                            int succ_base = (psi_succ - 1) * grid::NCELLS;
+                            bool all_ok = true;
+
+                            if (r3_lo <= r3_hi) {
+                                for (int k1 = r1_lo; k1 <= r1_hi && all_ok; ++k1) {
+                                    int k1_offset = succ_base + k1 * (grid::NY * grid::NTHETA);
+                                    for (int k2 = r2_lo; k2 <= r2_hi && all_ok; ++k2) {
+                                        int k12_offset = k1_offset + k2 * grid::NTHETA;
+                                        for (int k3 = r3_lo; k3 <= r3_hi; ++k3) {
+                                            if (Vp[k12_offset + k3] > 1e7f) {
+                                                all_ok = false;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Angle wraps around [-pi, pi]
+                                for (int k1 = r1_lo; k1 <= r1_hi && all_ok; ++k1) {
+                                    int k1_offset = succ_base + k1 * (grid::NY * grid::NTHETA);
+                                    for (int k2 = r2_lo; k2 <= r2_hi && all_ok; ++k2) {
+                                        int k12_offset = k1_offset + k2 * grid::NTHETA;
+                                        for (int k3 = r3_lo; k3 < grid::NTHETA; ++k3) {
+                                            if (Vp[k12_offset + k3] > 1e7f) {
+                                                all_ok = false;
+                                                break;
+                                            }
+                                        }
+                                        if (!all_ok) break;
+                                        for (int k3 = 0; k3 <= r3_hi; ++k3) {
+                                            if (Vp[k12_offset + k3] > 1e7f) {
+                                                all_ok = false;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (all_ok) {
+                                found_sigma = static_cast<uint8_t>(s + 1); // 1-indexed
+                                break;
                             }
                         }
 
-                        float old_v = V[pidx];
-                        if (best_v < old_v - 1e-6f) {
-                            V[pidx]    = best_v;
-                            ctrl[pidx] = best_u;
-                            local_deltas[tid] = std::max(local_deltas[tid],
-                                                         old_v - best_v);
+                        if (found_sigma > 0) {
+                            V[pidx_curr] = static_cast<float>(it);
+                            ctrl[pidx_succ] = found_sigma;
+                            ++changes;
                         }
                     }
                 }
             }
+        }
 
-        for (float ld : local_deltas) delta = std::max(delta, ld);
-        ++iter;
-        if (callback) callback(iter, delta);
+        if (callback) {
+            callback(it, static_cast<float>(changes));
+        }
+
+        if (changes == 0) {
+            break;
+        }
     }
-    return iter;
+
+    return it;
 }
 
-// ---------------------------------------------------------------------------
-// File I/O
-// ---------------------------------------------------------------------------
-
-bool save_controller_binary(const char*                  path,
-                             const std::vector<float>&    V,
-                             const std::vector<uint8_t>&  ctrl)
+bool save_controller_binary(const char*                 path,
+                            const std::vector<float>&   V,
+                            const std::vector<uint8_t>& ctrl)
 {
     std::ofstream f(path, std::ios::binary);
     if (!f) return false;
@@ -147,8 +151,8 @@ bool save_controller_binary(const char*                  path,
 }
 
 bool load_controller_binary(const char*            path,
-                              std::vector<float>&    V,
-                              std::vector<uint8_t>&  ctrl)
+                            std::vector<float>&    V,
+                            std::vector<uint8_t>&  ctrl)
 {
     std::ifstream f(path, std::ios::binary);
     if (!f) return false;

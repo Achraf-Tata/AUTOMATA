@@ -5,6 +5,8 @@ bin/
 *.o
 *.exe
 *.dll
+*.bin
+.vscode/
 
 # Exclude figures, documentation, and MATLAB reference code
 figures/
