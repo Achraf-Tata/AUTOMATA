@@ -43,14 +43,14 @@ int main() {
     {
         grid::RegionConfig cfg;
         grid::GridCoord gc0 = grid::quantize({0.05, 0.05, -M_PI + 0.01});
-        TEST_ASSERT(gc0.c1 == 0 && gc0.c2 == 0 && gc0.c3 == 0, "Quantize bottom-left cell");
+        TEST_ASSERT(gc0.cell_x == 0 && gc0.cell_y == 0 && gc0.cell_theta == 0, "Quantize bottom-left cell");
 
         grid::GridCoord gc_max = grid::quantize({9.99, 9.99, M_PI - 0.01});
-        TEST_ASSERT(gc_max.c1 == 99 && gc_max.c2 == 99 && gc_max.c3 == 29, "Quantize top-right cell");
+        TEST_ASSERT(gc_max.cell_x == 99 && gc_max.cell_y == 99 && gc_max.cell_theta == 29, "Quantize top-right cell");
 
         unicycle::State center = grid::cell_center({50, 50, 15});
         grid::GridCoord gc_re = grid::quantize(center);
-        TEST_ASSERT(gc_re.c1 == 50 && gc_re.c2 == 50 && gc_re.c3 == 15, "Cell center roundtrip");
+        TEST_ASSERT(gc_re.cell_x == 50 && gc_re.cell_y == 50 && gc_re.cell_theta == 15, "Cell center roundtrip");
 
         TEST_ASSERT(grid::get_region_label(4.5, 9.0, cfg) == 2, "Label R1");
         TEST_ASSERT(grid::get_region_label(9.0, 2.5, cfg) == 3, "Label R2");

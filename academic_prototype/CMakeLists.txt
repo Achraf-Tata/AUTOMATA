@@ -15,6 +15,8 @@ set(PROTOTYPE_SOURCES
     src/interval.cpp
     src/bounding_box.cpp
     src/grid_partition.cpp
+    src/dfa.cpp
+    src/product_automaton.cpp
     src/unicycle_model.cpp
     src/transition_system.cpp
     src/backward_reachability.cpp
@@ -29,4 +31,3 @@ target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
 add_executable(test_prototype tests/test_prototype.cpp)
 target_link_libraries(test_prototype PRIVATE prototype_core)
-

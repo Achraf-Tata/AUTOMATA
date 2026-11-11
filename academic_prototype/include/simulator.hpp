@@ -3,6 +3,8 @@
 #include "grid_partition.hpp"
 #include "unicycle_model.hpp"
 #include "backward_reachability.hpp"
+#include "product_automaton.hpp"
+#include "dfa.hpp"
 #include <vector>
 #include <unordered_set>
 
@@ -11,6 +13,7 @@ namespace symbolic::simulation {
 enum class SimulationOutcome {
     GoalReached,
     ObstacleCollision,
+    SpecificationViolation,
     OutOfBounds,
     UncontrollableState,
     StepLimitReached
@@ -18,21 +21,36 @@ enum class SimulationOutcome {
 
 struct TrajectoryStep {
     model::State continuous_state;
-    std::size_t cell_index = 0;
+    std::size_t spatial_cell_index = 0;
+    automaton::ObservationSymbol observation_symbol = automaton::ObservationSymbol::FreeSpace;
+    automaton::AutomatonState automaton_state = automaton::AutomatonState::Initial;
     model::Control applied_control;
 };
 
 struct SimulationTrace {
     SimulationOutcome outcome = SimulationOutcome::UncontrollableState;
+    bool satisfies_specification_language = false;
     std::size_t total_steps = 0;
     std::vector<TrajectoryStep> recorded_steps;
+    std::vector<automaton::ObservationSymbol> observation_word;
 };
 
 class ClosedLoopSimulator {
 public:
     ClosedLoopSimulator() = default;
 
-    [[nodiscard]] SimulationTrace run(
+    // Simulate under feedback policy synthesized over the Product Automaton (S x A)
+    [[nodiscard]] SimulationTrace run_product_closed_loop(
+        const model::State& initial_state,
+        const grid::GridPartition& partition,
+        const model::UnicycleModel& model,
+        const automaton::ProductAutomaton& product_automaton,
+        const synthesis::SynthesisResult& synthesis_result,
+        std::size_t maximum_steps = 100,
+        bool apply_bounded_disturbances = true);
+
+    // Baseline spatial simulation
+    [[nodiscard]] SimulationTrace run_spatial(
         const model::State& initial_state,
         const grid::GridPartition& partition,
         const model::UnicycleModel& model,

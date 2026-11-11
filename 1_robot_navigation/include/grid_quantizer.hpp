@@ -15,18 +15,31 @@
 
 namespace grid {
 
-inline constexpr int    NX     = 100;
-inline constexpr int    NY     = 100;
-inline constexpr int    NTHETA = 30;
-inline constexpr int    NCELLS = NX * NY * NTHETA;
+inline constexpr int    GRID_CELLS_X        = 100;
+inline constexpr int    GRID_CELLS_Y        = 100;
+inline constexpr int    GRID_CELLS_THETA    = 30;
+inline constexpr int    TOTAL_SPATIAL_CELLS = GRID_CELLS_X * GRID_CELLS_Y * GRID_CELLS_THETA;
 
-inline constexpr double X_MIN  =  0.0,  X_MAX  = 10.0;
-inline constexpr double Y_MIN  =  0.0,  Y_MAX  = 10.0;
-inline constexpr double TH_MIN = -M_PI, TH_MAX =  M_PI;
+inline constexpr int    NX     = GRID_CELLS_X;
+inline constexpr int    NY     = GRID_CELLS_Y;
+inline constexpr int    NTHETA = GRID_CELLS_THETA;
+inline constexpr int    NCELLS = TOTAL_SPATIAL_CELLS;
 
-inline constexpr double DX     = (X_MAX  - X_MIN)  / NX;
-inline constexpr double DY     = (Y_MAX  - Y_MIN)  / NY;
-inline constexpr double DTHETA = (TH_MAX - TH_MIN) / NTHETA;
+inline constexpr double COORDINATE_MIN_X   =  0.0,  COORDINATE_MAX_X   = 10.0;
+inline constexpr double COORDINATE_MIN_Y   =  0.0,  COORDINATE_MAX_Y   = 10.0;
+inline constexpr double ANGLE_MIN_THETA    = -M_PI, ANGLE_MAX_THETA    =  M_PI;
+
+inline constexpr double X_MIN  = COORDINATE_MIN_X, X_MAX  = COORDINATE_MAX_X;
+inline constexpr double Y_MIN  = COORDINATE_MIN_Y, Y_MAX  = COORDINATE_MAX_Y;
+inline constexpr double TH_MIN = ANGLE_MIN_THETA,  TH_MAX = ANGLE_MAX_THETA;
+
+inline constexpr double CELL_WIDTH_DX      = (COORDINATE_MAX_X  - COORDINATE_MIN_X)  / GRID_CELLS_X;
+inline constexpr double CELL_WIDTH_DY      = (COORDINATE_MAX_Y  - COORDINATE_MIN_Y)  / GRID_CELLS_Y;
+inline constexpr double CELL_WIDTH_DTHETA  = (ANGLE_MAX_THETA - ANGLE_MIN_THETA) / GRID_CELLS_THETA;
+
+inline constexpr double DX     = CELL_WIDTH_DX;
+inline constexpr double DY     = CELL_WIDTH_DY;
+inline constexpr double DTHETA = CELL_WIDTH_DTHETA;
 
 struct RegionConfig {
     double r1_x0 = 4.0,  r1_x1 = 5.0,  r1_y0 = 8.5,  r1_y1 = 9.5;
@@ -36,39 +49,39 @@ struct RegionConfig {
 };
 
 struct GridCoord {
-    int c1;
-    int c2;
-    int c3;
+    int cell_x;
+    int cell_y;
+    int cell_theta;
 };
 
-inline GridCoord quantize(const unicycle::State& s) noexcept {
-    int c1 = static_cast<int>(std::floor((s.x - X_MIN) / DX));
-    int c2 = static_cast<int>(std::floor((s.y - Y_MIN) / DY));
-    double th = s.theta;
-    while (th >  M_PI) th -= 2.0 * M_PI;
-    while (th < -M_PI) th += 2.0 * M_PI;
-    int c3 = static_cast<int>(std::floor((th - TH_MIN) / DTHETA));
+inline GridCoord quantize(const unicycle::State& continuous_state) noexcept {
+    int cell_x = static_cast<int>(std::floor((continuous_state.x - COORDINATE_MIN_X) / CELL_WIDTH_DX));
+    int cell_y = static_cast<int>(std::floor((continuous_state.y - COORDINATE_MIN_Y) / CELL_WIDTH_DY));
+    double normalized_theta = continuous_state.theta;
+    while (normalized_theta >  M_PI) normalized_theta -= 2.0 * M_PI;
+    while (normalized_theta < -M_PI) normalized_theta += 2.0 * M_PI;
+    int cell_theta = static_cast<int>(std::floor((normalized_theta - ANGLE_MIN_THETA) / CELL_WIDTH_DTHETA));
     return {
-        std::clamp(c1, 0, NX     - 1),
-        std::clamp(c2, 0, NY     - 1),
-        std::clamp(c3, 0, NTHETA - 1)
+        std::clamp(cell_x,     0, GRID_CELLS_X     - 1),
+        std::clamp(cell_y,     0, GRID_CELLS_Y     - 1),
+        std::clamp(cell_theta, 0, GRID_CELLS_THETA - 1)
     };
 }
 
-inline unicycle::State cell_center(const GridCoord& c) noexcept {
+inline unicycle::State cell_center(const GridCoord& grid_coordinate) noexcept {
     return {
-        X_MIN  + (c.c1 + 0.5) * DX,
-        Y_MIN  + (c.c2 + 0.5) * DY,
-        TH_MIN + (c.c3 + 0.5) * DTHETA
+        COORDINATE_MIN_X + (grid_coordinate.cell_x     + 0.5) * CELL_WIDTH_DX,
+        COORDINATE_MIN_Y + (grid_coordinate.cell_y     + 0.5) * CELL_WIDTH_DY,
+        ANGLE_MIN_THETA  + (grid_coordinate.cell_theta + 0.5) * CELL_WIDTH_DTHETA
     };
 }
 
-inline int flat_index(int c1, int c2, int c3) noexcept {
-    return c1 * (NY * NTHETA) + c2 * NTHETA + c3;
+inline int flat_index(int cell_x, int cell_y, int cell_theta) noexcept {
+    return cell_x * (GRID_CELLS_Y * GRID_CELLS_THETA) + cell_y * GRID_CELLS_THETA + cell_theta;
 }
 
-inline int flat_index(const GridCoord& c) noexcept {
-    return flat_index(c.c1, c.c2, c.c3);
+inline int flat_index(const GridCoord& grid_coordinate) noexcept {
+    return flat_index(grid_coordinate.cell_x, grid_coordinate.cell_y, grid_coordinate.cell_theta);
 }
 
 inline int get_region_label(double x, double y, const RegionConfig& cfg) noexcept {
