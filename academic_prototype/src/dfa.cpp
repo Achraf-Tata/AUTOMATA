@@ -140,3 +140,4 @@ DeterministicFiniteAutomaton create_navigation_specification_dfa() {
 }
 
 } // namespace symbolic::automaton
+

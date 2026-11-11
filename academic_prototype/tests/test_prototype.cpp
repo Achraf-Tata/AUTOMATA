@@ -92,16 +92,19 @@ void test_dfa_and_language_algorithms() {
     auto state_after_goal = dfa.transition(state_after_r1, symbolic::automaton::ObservationSymbol::Goal);
     assert(state_after_goal == symbolic::automaton::AutomatonState::GoalReached);
     assert(dfa.is_accepting_state(state_after_goal));
+    (void)state_after_goal;
 
     // Exclusivity test: q2 -> Waypoint2 -> q5 (sink)
     auto state_exclusivity_violation = dfa.transition(state_after_r1, symbolic::automaton::ObservationSymbol::Waypoint2);
     assert(state_exclusivity_violation == symbolic::automaton::AutomatonState::SinkTrap);
     assert(dfa.is_sink_state(state_exclusivity_violation));
+    (void)state_exclusivity_violation;
 
     // Obstacle test: q1 -> Obstacle -> q5 (sink)
     auto state_obstacle = dfa.transition(symbolic::automaton::AutomatonState::Initial,
                                          symbolic::automaton::ObservationSymbol::Obstacle);
     assert(state_obstacle == symbolic::automaton::AutomatonState::SinkTrap);
+    (void)state_obstacle;
 
     // Language word acceptance
     std::vector<symbolic::automaton::ObservationSymbol> accepted_trace_1 = {

@@ -125,3 +125,4 @@ std::unordered_set<std::size_t> ProductAutomaton::compute_sink_product_states() 
 }
 
 } // namespace symbolic::automaton
+
