@@ -1,16 +1,3 @@
-// =============================================================================
-// grid_quantizer.hpp — Member 2
-//
-// Maps continuous (x, y, theta) states to integer grid indices and back.
-// Labels regions and precomputes reachable index bounds (AbstractionTables)
-// based on: "Approches symboliques pour le contrôle des systèmes non linéaires"
-// by Antoine Girard, Pierre-Jean Meyer, Adnane Saoud (2024).
-//
-// Grid dimensions:
-//   x     : 100 cells over [0, 10],   DX = 0.1 m
-//   y     : 100 cells over [0, 10],   DY = 0.1 m
-//   theta :  30 cells over [-pi, pi], DTHETA = 2pi / 30 rad
-// =============================================================================
 #pragma once
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
@@ -28,46 +15,30 @@
 
 namespace grid {
 
-// ---------------------------------------------------------------------------
-// Grid constants
-// ---------------------------------------------------------------------------
-
 inline constexpr int    NX     = 100;
 inline constexpr int    NY     = 100;
 inline constexpr int    NTHETA = 30;
-inline constexpr int    NCELLS = NX * NY * NTHETA;  ///< 300 000 cells
+inline constexpr int    NCELLS = NX * NY * NTHETA;
 
 inline constexpr double X_MIN  =  0.0,  X_MAX  = 10.0;
 inline constexpr double Y_MIN  =  0.0,  Y_MAX  = 10.0;
 inline constexpr double TH_MIN = -M_PI, TH_MAX =  M_PI;
 
-inline constexpr double DX     = (X_MAX  - X_MIN)  / NX;      ///< 0.1
-inline constexpr double DY     = (Y_MAX  - Y_MIN)  / NY;      ///< 0.1
-inline constexpr double DTHETA = (TH_MAX - TH_MIN) / NTHETA;  ///< ≈ 0.2094 rad
-
-// ---------------------------------------------------------------------------
-// Region configuration — user-editable from the GUI
-// ---------------------------------------------------------------------------
+inline constexpr double DX     = (X_MAX  - X_MIN)  / NX;
+inline constexpr double DY     = (Y_MAX  - Y_MIN)  / NY;
+inline constexpr double DTHETA = (TH_MAX - TH_MIN) / NTHETA;
 
 struct RegionConfig {
-    // R1: target visited first  — default [4,5] × [8.5,9.5]
     double r1_x0 = 4.0,  r1_x1 = 5.0,  r1_y0 = 8.5,  r1_y1 = 9.5;
-    // R2: target visited second — default [8.5,9.5] × [2,3]
     double r2_x0 = 8.5,  r2_x1 = 9.5,  r2_y0 = 2.0,  r2_y1 = 3.0;
-    // R3: target (goal)         — default [2,3] × [0.5,1.5]
     double r3_x0 = 2.0,  r3_x1 = 3.0,  r3_y0 = 0.5,  r3_y1 = 1.5;
-    // R4: obstacle to avoid     — default [3,7] × [3,7]
     double r4_x0 = 3.0,  r4_x1 = 7.0,  r4_y0 = 3.0,  r4_y1 = 7.0;
 };
 
-// ---------------------------------------------------------------------------
-// Integer grid coordinate
-// ---------------------------------------------------------------------------
-
 struct GridCoord {
-    int c1;  ///< x  index in [0, NX-1]
-    int c2;  ///< y  index in [0, NY-1]
-    int c3;  ///< th index in [0, NTHETA-1]
+    int c1;
+    int c2;
+    int c3;
 };
 
 inline GridCoord quantize(const unicycle::State& s) noexcept {
@@ -100,12 +71,7 @@ inline int flat_index(const GridCoord& c) noexcept {
     return flat_index(c.c1, c.c2, c.c3);
 }
 
-// ---------------------------------------------------------------------------
-// Region labelling: 1=Free, 2=R1, 3=R2, 4=R3 (Goal), 5=R4 (Obstacle)
-// ---------------------------------------------------------------------------
-
 inline int get_region_label(double x, double y, const RegionConfig& cfg) noexcept {
-    // Check obstacle first (label 5)
     if (x >= cfg.r4_x0 && x <= cfg.r4_x1 && y >= cfg.r4_y0 && y <= cfg.r4_y1) {
         return 5;
     }
@@ -118,12 +84,8 @@ inline int get_region_label(double x, double y, const RegionConfig& cfg) noexcep
     if (x >= cfg.r3_x0 && x <= cfg.r3_x1 && y >= cfg.r3_y0 && y <= cfg.r3_y1) {
         return 4;
     }
-    return 1; // Free
+    return 1;
 }
-
-// ---------------------------------------------------------------------------
-// Discrete Abstraction Precomputed Tables (Stored on Heap)
-// ---------------------------------------------------------------------------
 
 struct AbstractionTables {
     std::vector<int>     c1_min;
@@ -181,7 +143,6 @@ inline AbstractionTables precompute_abstraction_tables(double noise_bound = 0.05
     double d_x[3] = { DX, DY, DTHETA };
     double d_w[3] = { 2.0 * noise_bound, 2.0 * noise_bound, 2.0 * noise_bound };
 
-    // 1. Reachable set deviation bounds d_x_succ for each control
     double d_x_succ[3][15];
     for (int s = 0; s < 15; ++s) {
         double u0 = unicycle::ALL_CONTROLS[s].v;
@@ -190,7 +151,6 @@ inline AbstractionTables precompute_abstraction_tables(double noise_bound = 0.05
         d_x_succ[2][s] = 0.5 * d_x[2] + 0.5 * dt * d_w[2];
     }
 
-    // 2. Heading bounds c3_min, c3_max
     for (int s = 0; s < 15; ++s) {
         double u1 = unicycle::ALL_CONTROLS[s].w;
         for (int i3 = 0; i3 < NTHETA; ++i3) {
@@ -217,7 +177,6 @@ inline AbstractionTables precompute_abstraction_tables(double noise_bound = 0.05
         }
     }
 
-    // 3. Coordinate x1 bounds & validity
     for (int s = 0; s < 15; ++s) {
         double u0 = unicycle::ALL_CONTROLS[s].v;
         for (int i3 = 0; i3 < NTHETA; ++i3) {
@@ -238,7 +197,6 @@ inline AbstractionTables precompute_abstraction_tables(double noise_bound = 0.05
         }
     }
 
-    // 4. Coordinate x2 bounds & validity
     for (int s = 0; s < 15; ++s) {
         double u0 = unicycle::ALL_CONTROLS[s].v;
         for (int i3 = 0; i3 < NTHETA; ++i3) {

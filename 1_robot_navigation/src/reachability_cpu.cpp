@@ -1,6 +1,3 @@
-// =============================================================================
-// reachability_cpu.cpp — Member 4
-// =============================================================================
 #include "reachability_cpu.hpp"
 #include <omp.h>
 #include <fstream>
@@ -16,7 +13,6 @@ int solve_reachability_openmp(
     const grid::AbstractionTables&   abs_tables,
     ProgressCallback                 callback)
 {
-    // 1. Compute 2D label matrix for current region layout
     uint8_t lab_2d[grid::NX][grid::NY];
     for (int i1 = 0; i1 < grid::NX; ++i1) {
         double x = grid::X_MIN + (i1 + 0.5) * grid::DX;
@@ -42,20 +38,18 @@ int solve_reachability_openmp(
                     for (int psi = 1; psi <= automaton::NDFA; ++psi) {
                         int pidx_curr = automaton::product_index(psi, cell_flat);
                         if (V[pidx_curr] < 1e8f) {
-                            continue; // already controllable
+                            continue;
                         }
 
                         int psi_succ = automaton::dfa_transition(psi, lab);
                         int pidx_succ = automaton::product_index(psi_succ, cell_flat);
 
-                        // If control at successor automaton state already resolved
                         if (ctrl[pidx_succ] != 0) {
                             V[pidx_curr] = static_cast<float>(it);
                             ++changes;
                             continue;
                         }
 
-                        // Search for an enabling control sigma (1..15)
                         uint8_t found_sigma = 0;
                         for (int s = 0; s < 15; ++s) {
                             if (!abs_tables.get_valid1(i1, i3, s) || !abs_tables.get_valid2(i2, i3, s)) {
@@ -86,7 +80,6 @@ int solve_reachability_openmp(
                                     }
                                 }
                             } else {
-                                // Angle wraps around [-pi, pi]
                                 for (int k1 = r1_lo; k1 <= r1_hi && all_ok; ++k1) {
                                     int k1_offset = succ_base + k1 * (grid::NY * grid::NTHETA);
                                     for (int k2 = r2_lo; k2 <= r2_hi && all_ok; ++k2) {
@@ -109,7 +102,7 @@ int solve_reachability_openmp(
                             }
 
                             if (all_ok) {
-                                found_sigma = static_cast<uint8_t>(s + 1); // 1-indexed
+                                found_sigma = static_cast<uint8_t>(s + 1);
                                 break;
                             }
                         }

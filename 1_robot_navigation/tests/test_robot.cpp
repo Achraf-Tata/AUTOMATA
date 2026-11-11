@@ -1,6 +1,3 @@
-// =============================================================================
-// test_robot.cpp — Verification suite for 1_robot_navigation
-// =============================================================================
 #include "unicycle_model.hpp"
 #include "grid_quantizer.hpp"
 #include "product_automaton.hpp"
@@ -15,21 +12,17 @@
 #define TEST_ASSERT(cond, msg) \
     do { \
         if (!(cond)) { \
-            std::cerr << "[-] FAILED: " << msg << " (" << #cond << ") at line " << __LINE__ << std::endl; \
+            std::cerr << "Assertion failed: " << msg << " (" << #cond << ") at line " << __LINE__ << std::endl; \
             return 1; \
         } \
     } while (0)
 
 int main() {
-    std::cout << "=== Running Robot Navigation Verification Suite ===" << std::endl;
+    std::cout << "Running robot navigation test suite..." << std::endl;
 
-    // -------------------------------------------------------------------------
-    // 1. Member 1: Kinematics & Bounding Box
-    // -------------------------------------------------------------------------
-    std::cout << "[*] Testing Member 1: Unicycle Kinematics & Reachable Sets..." << std::endl;
     {
         unicycle::State s0 = {1.0, 2.0, 0.0};
-        unicycle::Control u0 = {1.0, 0.0}; // forward 1 m/s, straight
+        unicycle::Control u0 = {1.0, 0.0};
         std::array<double, 3> noise_zero = {0.0, 0.0, 0.0};
 
         unicycle::State s1 = unicycle::step(s0, u0, noise_zero, 1.0);
@@ -44,13 +37,9 @@ int main() {
         unicycle::Box rbox = unicycle::compute_reachable_box(cell_box, u0, 0.05, 1.0);
         TEST_ASSERT(rbox.x_min < s1.x && rbox.x_max > s1.x, "Reachable box covers nominal x");
         TEST_ASSERT(rbox.y_min < s1.y && rbox.y_max > s1.y, "Reachable box covers nominal y");
-        std::cout << "    [+] Member 1 tests PASSED." << std::endl;
+        std::cout << "Unicycle kinematics tests passed." << std::endl;
     }
 
-    // -------------------------------------------------------------------------
-    // 2. Member 2: Grid Quantizer & Abstraction Tables
-    // -------------------------------------------------------------------------
-    std::cout << "[*] Testing Member 2: Grid Quantizer & Abstraction Precomputation..." << std::endl;
     {
         grid::RegionConfig cfg;
         grid::GridCoord gc0 = grid::quantize({0.05, 0.05, -M_PI + 0.01});
@@ -63,64 +52,51 @@ int main() {
         grid::GridCoord gc_re = grid::quantize(center);
         TEST_ASSERT(gc_re.c1 == 50 && gc_re.c2 == 50 && gc_re.c3 == 15, "Cell center roundtrip");
 
-        // Labels: 1=Free, 2=R1, 3=R2, 4=R3 (goal), 5=R4 (obstacle)
         TEST_ASSERT(grid::get_region_label(4.5, 9.0, cfg) == 2, "Label R1");
         TEST_ASSERT(grid::get_region_label(9.0, 2.5, cfg) == 3, "Label R2");
-        TEST_ASSERT(grid::get_region_label(2.5, 1.0, cfg) == 4, "Label R3 (goal)");
-        TEST_ASSERT(grid::get_region_label(5.0, 5.0, cfg) == 5, "Label R4 (obstacle)");
-        TEST_ASSERT(grid::get_region_label(0.5, 0.5, cfg) == 1, "Label Free (1)");
+        TEST_ASSERT(grid::get_region_label(2.5, 1.0, cfg) == 4, "Label R3");
+        TEST_ASSERT(grid::get_region_label(5.0, 5.0, cfg) == 5, "Label R4");
+        TEST_ASSERT(grid::get_region_label(0.5, 0.5, cfg) == 1, "Label Free");
 
         auto abs_tables = grid::precompute_abstraction_tables(0.05, 1.0);
         TEST_ASSERT(abs_tables.get_c1_max(50, 15, 0) >= abs_tables.get_c1_min(50, 15, 0), "Valid x bounds");
         TEST_ASSERT(abs_tables.get_c2_max(50, 15, 0) >= abs_tables.get_c2_min(50, 15, 0), "Valid y bounds");
-        std::cout << "    [+] Member 2 tests PASSED." << std::endl;
+        std::cout << "Grid quantizer and abstraction tests passed." << std::endl;
     }
 
-    // -------------------------------------------------------------------------
-    // 3. Member 3: Product Automaton DFA
-    // -------------------------------------------------------------------------
-    std::cout << "[*] Testing Member 3: Product Automaton DFA Transitions..." << std::endl;
     {
-        // q=1 (searching):
         TEST_ASSERT(automaton::dfa_transition(1, 1) == 1, "q1 + free -> q1");
         TEST_ASSERT(automaton::dfa_transition(1, 2) == 2, "q1 + R1 -> q2");
         TEST_ASSERT(automaton::dfa_transition(1, 3) == 3, "q1 + R2 -> q3");
-        TEST_ASSERT(automaton::dfa_transition(1, 4) == 1, "q1 + R3 -> q1 (not active yet)");
-        TEST_ASSERT(automaton::dfa_transition(1, 5) == 5, "q1 + R4 -> q5 (hit obstacle)");
+        TEST_ASSERT(automaton::dfa_transition(1, 4) == 1, "q1 + R3 -> q1");
+        TEST_ASSERT(automaton::dfa_transition(1, 5) == 5, "q1 + R4 -> q5");
 
-        // q=2 (R1 visited):
         TEST_ASSERT(automaton::dfa_transition(2, 1) == 2, "q2 + free -> q2");
         TEST_ASSERT(automaton::dfa_transition(2, 2) == 2, "q2 + R1 -> q2");
-        TEST_ASSERT(automaton::dfa_transition(2, 3) == 5, "q2 + R2 -> q5 (forbidden duplicate)");
-        TEST_ASSERT(automaton::dfa_transition(2, 4) == 4, "q2 + R3 -> q4 (GOAL REACHED!)");
-        TEST_ASSERT(automaton::dfa_transition(2, 5) == 5, "q2 + R4 -> q5 (hit obstacle)");
+        TEST_ASSERT(automaton::dfa_transition(2, 3) == 5, "q2 + R2 -> q5");
+        TEST_ASSERT(automaton::dfa_transition(2, 4) == 4, "q2 + R3 -> q4");
+        TEST_ASSERT(automaton::dfa_transition(2, 5) == 5, "q2 + R4 -> q5");
 
-        // q=3 (R2 visited):
         TEST_ASSERT(automaton::dfa_transition(3, 1) == 3, "q3 + free -> q3");
-        TEST_ASSERT(automaton::dfa_transition(3, 2) == 5, "q3 + R1 -> q5 (forbidden duplicate)");
+        TEST_ASSERT(automaton::dfa_transition(3, 2) == 5, "q3 + R1 -> q5");
         TEST_ASSERT(automaton::dfa_transition(3, 3) == 3, "q3 + R2 -> q3");
-        TEST_ASSERT(automaton::dfa_transition(3, 4) == 4, "q3 + R3 -> q4 (GOAL REACHED!)");
-        TEST_ASSERT(automaton::dfa_transition(3, 5) == 5, "q3 + R4 -> q5 (hit obstacle)");
+        TEST_ASSERT(automaton::dfa_transition(3, 4) == 4, "q3 + R3 -> q4");
+        TEST_ASSERT(automaton::dfa_transition(3, 5) == 5, "q3 + R4 -> q5");
 
-        // Absorbing:
         TEST_ASSERT(automaton::dfa_transition(4, 2) == 4, "q4 absorbing");
         TEST_ASSERT(automaton::dfa_transition(5, 4) == 5, "q5 absorbing");
 
         auto V = automaton::init_value_function();
         auto ctrl = automaton::init_controller();
-        TEST_ASSERT(V.size() == static_cast<size_t>(automaton::NTOTAL), "V total size");
-        TEST_ASSERT(ctrl.size() == static_cast<size_t>(automaton::NTOTAL), "ctrl total size");
+        TEST_ASSERT(V.size() == static_cast<size_t>(automaton::NTOTAL), "V size");
+        TEST_ASSERT(ctrl.size() == static_cast<size_t>(automaton::NTOTAL), "ctrl size");
         int base_goal = (4 - 1) * grid::NCELLS;
         TEST_ASSERT(V[base_goal + 100] == 0.0f, "Goal state V is 0");
         int base_q1 = (1 - 1) * grid::NCELLS;
         TEST_ASSERT(V[base_q1 + 100] == automaton::INF, "q1 state V is INF initially");
-        std::cout << "    [+] Member 3 tests PASSED." << std::endl;
+        std::cout << "Product automaton tests passed." << std::endl;
     }
 
-    // -------------------------------------------------------------------------
-    // 4. Member 4: Backward Reachability Solver & Serialization
-    // -------------------------------------------------------------------------
-    std::cout << "[*] Testing Member 4: OpenMP Reachability Solver & Synthesis Execution..." << std::endl;
     {
         grid::RegionConfig cfg;
         auto abs_tables = grid::precompute_abstraction_tables(0.05, 1.0);
@@ -132,16 +108,13 @@ int main() {
         auto t1 = std::chrono::high_resolution_clock::now();
         double elapsed_sec = std::chrono::duration<double>(t1 - t0).count();
 
-        std::cout << "    [+] Solver completed " << iters << " iterations in "
-                  << elapsed_sec << " seconds!" << std::endl;
+        std::cout << "Solver completed " << iters << " iterations in " << elapsed_sec << " s." << std::endl;
         TEST_ASSERT(iters > 10 && iters <= 50, "Solver converged in realistic iteration count");
 
-        // Check that initial position (1.0, 2.0, 0.0) is controllable
         grid::GridCoord gc_start = grid::quantize({1.0, 2.0, 0.0});
         int pidx_q1 = automaton::product_index(1, grid::flat_index(gc_start));
         TEST_ASSERT(V[pidx_q1] < 1e7f, "Start position is controllable in V");
 
-        // Serialization
         const char* test_path = "test_ctrl_tmp.bin";
         bool saved = solver::save_controller_binary(test_path, V, ctrl);
         TEST_ASSERT(saved, "Save controller binary");
@@ -155,12 +128,8 @@ int main() {
         TEST_ASSERT(V_loaded[pidx_q1] == V[pidx_q1], "Loaded start V matches");
 
         std::remove(test_path);
-        std::cout << "    [+] Member 4 solver & serialization tests PASSED." << std::endl;
+        std::cout << "Serialization tests passed." << std::endl;
 
-        // ---------------------------------------------------------------------
-        // 5. Member 5: Closed-Loop Trajectory Verification
-        // ---------------------------------------------------------------------
-        std::cout << "[*] Testing Member 5: Closed-Loop Navigation from (1.0, 2.0, 0.0)..." << std::endl;
         unicycle::State rp = {1.0, 2.0, 0.0};
         int psi = 1;
         bool reached = false;
@@ -177,7 +146,7 @@ int main() {
                 break;
             }
             if (psi == 5) {
-                TEST_ASSERT(false, "Simulation hit obstacle or violated exclusivity!");
+                TEST_ASSERT(false, "Simulation entered invalid state");
             }
 
             int pidx = automaton::product_index(psi, grid::flat_index(gc));
@@ -190,10 +159,9 @@ int main() {
         }
 
         TEST_ASSERT(reached, "Robot reached target state q=4 within 150 steps");
-        std::cout << "    [+] Closed-loop navigation REACHED TARGET in " << steps << " steps!" << std::endl;
-        std::cout << "    [+] Member 5 simulation tests PASSED." << std::endl;
+        std::cout << "Closed-loop simulation reached goal in " << steps << " steps." << std::endl;
     }
 
-    std::cout << "\n>>> ALL 5 VERIFICATION TEST SUITES PASSED CLEANLY! <<<" << std::endl;
+    std::cout << "All test suites completed successfully." << std::endl;
     return 0;
 }
