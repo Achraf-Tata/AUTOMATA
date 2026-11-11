@@ -43,7 +43,7 @@ struct AppState {
     bool arena_modified = false;
 
     // --- Robot initial configuration ---
-    unicycle::State robot_start = {1.23, 9.29, -29.7 * M_PI / 180.0};
+    unicycle::State robot_start = {1.0, 2.0, 0.0};
 
     // --- Precomputed abstraction tables ---
     grid::AbstractionTables abs_tables;
@@ -54,8 +54,8 @@ struct AppState {
     std::vector<uint8_t> ctrl;
     bool  controller_ready          = false;
     bool  solving                   = false;
-    int   solve_iterations          = 25;
-    float solve_duration            = 1.206f;
+    int   solve_iterations          = 0;
+    float solve_duration            = 0.0f;
     float solve_progress            = 0.0f;
     int   solve_changes             = 0;
     bool  auto_simulate_after_solve = false;
@@ -68,30 +68,33 @@ struct AppState {
     int               sim_max_steps  = 200;
     bool              sim_with_noise = true;
     int               sim_dfa_state  = 1;
-    unicycle::State   sim_robot_pos  = {7.04, 3.10, -58.4 * M_PI / 180.0};
+    unicycle::State   sim_robot_pos  = {1.0, 2.0, 0.0};
     unicycle::Control sim_last_u     = {0.0, 0.0};
     std::vector<unicycle::State> active_trajectory;
+    float             anim_speed     = 15.0f; // Steps per second (1..60)
+    bool              instant_sim    = false; // If true, computes immediately
 
-    // --- Run result display state ---
-    bool            has_run_result = true;
-    RunStatus       last_status    = RunStatus::GoalReached;
-    unicycle::State final_state    = {7.04, 3.10, -58.4 * M_PI / 180.0};
-    int             final_step     = 11;
+    // --- Run result display state (starts clean and idle) ---
+    bool            has_run_result = false;
+    RunStatus       last_status    = RunStatus::Idle;
+    unicycle::State final_state    = {1.0, 2.0, 0.0};
+    int             final_step     = 0;
 
     // --- Monte Carlo analysis ---
     bool  mc_running   = false;
-    int   mc_samples   = 200;
-    float mc_progress  = 1.0f;
+    int   mc_samples   = 50;
+    float mc_progress  = 0.0f;
     MonteCarloStats mc_stats;
     std::vector<std::vector<unicycle::State>> mc_trajectories;
 
     // --- UI toggles & interaction ---
-    bool show_grid         = true;
-    bool show_trajectories = true;
-    int  dragging_region   = 0; // 1..4
-    bool dragging_robot    = false;
-    int  resize_region     = 0;
-    int  resize_corner     = 0;
+    bool show_grid            = true;
+    bool show_trajectories    = true;
+    int  dragging_region      = 0; // 1..4
+    bool dragging_robot_pos   = false;
+    bool dragging_robot_rot   = false;
+    int  resize_region        = 0;
+    int  resize_corner        = 0;
 
     // --- Modal dialog states ---
     bool show_arena_modified_modal = false;
@@ -109,5 +112,6 @@ struct AppState {
 
 void init_app_state(AppState& app);
 void mark_arena_modified(AppState& app);
+void reset_simulation(AppState& app);
 
 } // namespace robot_nav

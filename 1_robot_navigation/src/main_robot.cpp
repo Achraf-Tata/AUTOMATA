@@ -15,8 +15,15 @@
 
 #include <GLFW/glfw3.h>
 #include <cstdio>
+#include <algorithm>
 
 static GLFWwindow* g_window = nullptr;
+
+namespace robot_nav::gui {
+GLFWwindow* get_window() {
+    return g_window;
+}
+} // namespace robot_nav::gui
 
 static bool init_window_and_gl(int width, int height, const char* title) {
     if (!glfwInit()) return false;
@@ -55,8 +62,8 @@ static void shutdown_window_and_gl() {
 }
 
 int main() {
-    constexpr int WINDOW_WIDTH  = 1560;
-    constexpr int WINDOW_HEIGHT = 960;
+    constexpr int WINDOW_WIDTH  = 1500;
+    constexpr int WINDOW_HEIGHT = 900;
 
     if (!init_window_and_gl(WINDOW_WIDTH, WINDOW_HEIGHT, "Robot Navigation")) {
         return 1;
@@ -69,30 +76,44 @@ int main() {
     app.abs_tables = grid::precompute_abstraction_tables();
     app.abs_tables_ready = true;
 
-    // Load precomputed controller binary or synthesize if absent
+    // Load precomputed controller binary if available on disk
     if (solver::load_controller_binary(app.controller_filename, app.V, app.ctrl)) {
         app.controller_ready = true;
-    } else {
-        robot_nav::engine::trigger_synthesis(app);
     }
+
+    static double s_last_anim_step = 0.0;
 
     while (!glfwWindowShouldClose(g_window)) {
         glfwPollEvents();
 
+        // Animated simulation stepper at user-configured speed
+        double current_time = glfwGetTime();
         if (app.sim_running && !app.sim_paused) {
-            robot_nav::engine::sim_step_once(app);
+            if (app.instant_sim) {
+                while (app.sim_running && !app.sim_paused) {
+                    if (!robot_nav::engine::sim_step_once(app)) {
+                        break;
+                    }
+                }
+            } else {
+                double interval = 1.0 / std::clamp(static_cast<double>(app.anim_speed), 1.0, 60.0);
+                if (current_time - s_last_anim_step >= interval) {
+                    robot_nav::engine::sim_step_once(app);
+                    s_last_anim_step = current_time;
+                }
+            }
         }
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        int display_w, display_h;
-        glfwGetFramebufferSize(g_window, &display_w, &display_h);
+        ImGuiIO& io = ImGui::GetIO();
 
+        // Responsive fullscreen root viewport using io.DisplaySize
         ImGui::SetNextWindowPos({0.0f, 0.0f});
-        ImGui::SetNextWindowSize({static_cast<float>(display_w), static_cast<float>(display_h)});
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 14.0f));
+        ImGui::SetNextWindowSize(io.DisplaySize);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 10.0f));
 
         ImGui::Begin("##root_canvas", nullptr,
                      ImGuiWindowFlags_NoTitleBar  |
@@ -101,33 +122,36 @@ int main() {
                      ImGuiWindowFlags_NoScrollbar |
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-        float total_w = static_cast<float>(display_w) - 32.0f;
-        float total_h = static_cast<float>(display_h) - 28.0f;
+        float total_w = io.DisplaySize.x - 24.0f;
+        float total_h = io.DisplaySize.y - 20.0f;
 
         // 1. Top Navigation Bar
         robot_nav::ui::render_header_bar(app, total_w);
         ImGui::Spacing();
 
-        // 2. Main layout: Left Arena + Right Control Cards
-        float right_panel_w = 560.0f;
-        float left_arena_w  = total_w - right_panel_w - 14.0f;
-        float usable_body_h = total_h - 68.0f;
+        // 2. Responsive Main Layout: Left Arena + Right Control Cards
+        float nav_bar_h = 52.0f;
+        float body_h    = total_h - nav_bar_h - 10.0f;
+
+        float right_panel_w = std::clamp(total_w * 0.38f, 380.0f, 540.0f);
+        float left_arena_w  = total_w - right_panel_w - 12.0f;
 
         // Left Column (Arena + Legend)
         ImGui::BeginGroup();
         float legend_h  = 66.0f;
-        float arena_h   = usable_body_h - legend_h - 10.0f;
+        float arena_h   = body_h - legend_h - 8.0f;
         robot_nav::arena::render_arena_card(app, left_arena_w, arena_h);
         ImGui::Spacing();
         robot_nav::arena::render_legend_card(app, left_arena_w);
         ImGui::EndGroup();
 
-        ImGui::SameLine(0, 14.0f);
+        ImGui::SameLine(0, 12.0f);
 
-        // Right Column (5 Stacked Cards)
-        ImGui::BeginGroup();
-        robot_nav::ui::render_right_cards(app, right_panel_w);
-        ImGui::EndGroup();
+        // Right Column (Scrollable so cards never clip off screen edges)
+        ImGui::BeginChild("##right_column_scroll", ImVec2(right_panel_w, body_h), false,
+                          ImGuiWindowFlags_NoScrollbar);
+        robot_nav::ui::render_right_cards(app, right_panel_w - 4.0f);
+        ImGui::EndChild();
 
         // 3. Modal Dialogs (Edge Case Alerts & Arena Modified Warning)
         robot_nav::dialogs::render_popup_dialogs(app);
@@ -136,6 +160,8 @@ int main() {
         ImGui::PopStyleVar();
 
         ImGui::Render();
+        int display_w, display_h;
+        glfwGetFramebufferSize(g_window, &display_w, &display_h);
         glViewport(0, 0, display_w, display_h);
         const auto& c = robot_nav::theme::colors::bg_canvas;
         glClearColor(c.x, c.y, c.z, 1.0f);
