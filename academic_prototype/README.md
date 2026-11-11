@@ -112,3 +112,4 @@ cmake --build build --config Release
 # Or specify custom resolution (nx ny ntheta)
 ./build/Release/prototype_navigation.exe 40 40 16
 ```
+

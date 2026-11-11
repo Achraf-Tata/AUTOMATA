@@ -7,69 +7,81 @@ SimulationTrace ClosedLoopSimulator::run(
     const model::State& initial_state,
     const grid::GridPartition& partition,
     const model::UnicycleModel& model,
-    const synthesis::SynthesisResult& synthesis,
-    const std::unordered_set<std::size_t>& target_states,
-    const std::unordered_set<std::size_t>& obstacle_states,
-    std::size_t max_steps,
-    bool apply_disturbances)
+    const synthesis::SynthesisResult& synthesis_result,
+    const std::unordered_set<std::size_t>& target_state_indices,
+    const std::unordered_set<std::size_t>& obstacle_state_indices,
+    std::size_t maximum_steps,
+    bool apply_bounded_disturbances)
 {
-    SimulationTrace trace;
-    model::State current = initial_state;
+    SimulationTrace simulation_trace;
+    model::State current_continuous_state = initial_state;
 
-    std::mt19937 rng(12345);
-    std::uniform_real_distribution<double> dist_w(-0.045, 0.045);
+    std::mt19937 random_generator(12345);
+    std::uniform_real_distribution<double> disturbance_distribution(-0.045, 0.045);
 
-    for (std::size_t step = 0; step < max_steps; ++step) {
-        // Boundary check
-        if (!partition.domain.contains(current.x, current.y, current.theta)) {
-            trace.outcome = SimulationOutcome::OutOfBounds;
-            trace.total_steps = step;
-            return trace;
+    for (std::size_t step_index = 0; step_index < maximum_steps; ++step_index) {
+        // Arena boundary verification
+        if (!partition.state_domain.contains(current_continuous_state.x_position,
+                                             current_continuous_state.y_position,
+                                             current_continuous_state.heading_angle))
+        {
+            simulation_trace.outcome = SimulationOutcome::OutOfBounds;
+            simulation_trace.total_steps = step_index;
+            return simulation_trace;
         }
 
-        std::size_t q = partition.point_to_flat(current.x, current.y, current.theta);
+        std::size_t current_cell_index = partition.point_to_flat(
+            current_continuous_state.x_position,
+            current_continuous_state.y_position,
+            current_continuous_state.heading_angle);
 
-        // Check target condition
-        if (target_states.find(q) != target_states.end()) {
-            trace.outcome = SimulationOutcome::GoalReached;
-            trace.total_steps = step;
-            trace.steps.push_back({ current, q, {0.0, 0.0} });
-            return trace;
+        // Target reachability verification
+        if (target_state_indices.find(current_cell_index) != target_state_indices.end()) {
+            simulation_trace.outcome = SimulationOutcome::GoalReached;
+            simulation_trace.total_steps = step_index;
+            simulation_trace.recorded_steps.push_back({ current_continuous_state, current_cell_index, {0.0, 0.0} });
+            return simulation_trace;
         }
 
-        // Check obstacle collision
-        if (obstacle_states.find(q) != obstacle_states.end()) {
-            trace.outcome = SimulationOutcome::ObstacleCollision;
-            trace.total_steps = step;
-            trace.steps.push_back({ current, q, {0.0, 0.0} });
-            return trace;
+        // Obstacle avoidance verification
+        if (obstacle_state_indices.find(current_cell_index) != obstacle_state_indices.end()) {
+            simulation_trace.outcome = SimulationOutcome::ObstacleCollision;
+            simulation_trace.total_steps = step_index;
+            simulation_trace.recorded_steps.push_back({ current_continuous_state, current_cell_index, {0.0, 0.0} });
+            return simulation_trace;
         }
 
-        // Check controller policy
-        if (q >= synthesis.controller.size() || !synthesis.controller[q].has_value()) {
-            trace.outcome = SimulationOutcome::UncontrollableState;
-            trace.total_steps = step;
-            trace.steps.push_back({ current, q, {0.0, 0.0} });
-            return trace;
+        // Feedback controller policy query
+        if (current_cell_index >= synthesis_result.feedback_policy.size() ||
+            !synthesis_result.feedback_policy[current_cell_index].has_value())
+        {
+            simulation_trace.outcome = SimulationOutcome::UncontrollableState;
+            simulation_trace.total_steps = step_index;
+            simulation_trace.recorded_steps.push_back({ current_continuous_state, current_cell_index, {0.0, 0.0} });
+            return simulation_trace;
         }
 
-        std::size_t u_idx = synthesis.controller[q].value();
-        const auto& u = model.get_control(u_idx);
+        std::size_t optimal_control_index = synthesis_result.feedback_policy[current_cell_index].value();
+        const auto& selected_control = model.get_control(optimal_control_index);
 
-        trace.steps.push_back({ current, q, u });
+        simulation_trace.recorded_steps.push_back({ current_continuous_state, current_cell_index, selected_control });
 
-        // Continuous unicycle state transition under bounded disturbance
-        std::array<double, 3> w = {0.0, 0.0, 0.0};
-        if (apply_disturbances) {
-            w = { dist_w(rng), dist_w(rng), dist_w(rng) };
+        // Apply continuous dynamics with disturbance
+        std::array<double, 3> active_disturbance_vector = {0.0, 0.0, 0.0};
+        if (apply_bounded_disturbances) {
+            active_disturbance_vector = {
+                disturbance_distribution(random_generator),
+                disturbance_distribution(random_generator),
+                disturbance_distribution(random_generator)
+            };
         }
 
-        current = model.step_exact(current, u, w);
+        current_continuous_state = model.step_exact(current_continuous_state, selected_control, active_disturbance_vector);
     }
 
-    trace.outcome = SimulationOutcome::StepLimitReached;
-    trace.total_steps = max_steps;
-    return trace;
+    simulation_trace.outcome = SimulationOutcome::StepLimitReached;
+    simulation_trace.total_steps = maximum_steps;
+    return simulation_trace;
 }
 
 } // namespace symbolic::simulation

@@ -25,7 +25,7 @@ struct TrajectoryStep {
 struct SimulationTrace {
     SimulationOutcome outcome = SimulationOutcome::UncontrollableState;
     std::size_t total_steps = 0;
-    std::vector<TrajectoryStep> steps;
+    std::vector<TrajectoryStep> recorded_steps;
 };
 
 class ClosedLoopSimulator {
@@ -36,11 +36,11 @@ public:
         const model::State& initial_state,
         const grid::GridPartition& partition,
         const model::UnicycleModel& model,
-        const synthesis::SynthesisResult& synthesis,
-        const std::unordered_set<std::size_t>& target_states,
-        const std::unordered_set<std::size_t>& obstacle_states,
-        std::size_t max_steps = 100,
-        bool apply_disturbances = true);
+        const synthesis::SynthesisResult& synthesis_result,
+        const std::unordered_set<std::size_t>& target_state_indices,
+        const std::unordered_set<std::size_t>& obstacle_state_indices,
+        std::size_t maximum_steps = 100,
+        bool apply_bounded_disturbances = true);
 };
 
 } // namespace symbolic::simulation

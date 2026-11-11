@@ -29,3 +29,4 @@ target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
 add_executable(test_prototype tests/test_prototype.cpp)
 target_link_libraries(test_prototype PRIVATE prototype_core)
+

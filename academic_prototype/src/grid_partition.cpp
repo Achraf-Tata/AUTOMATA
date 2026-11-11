@@ -8,76 +8,85 @@ namespace symbolic::grid {
 #define M_PI 3.14159265358979323846
 #endif
 
-GridPartition::GridPartition(const domain::BoundingBox& state_domain,
-                             std::size_t num_x,
-                             std::size_t num_y,
-                             std::size_t num_theta)
-    : domain(state_domain),
-      nx(std::max<std::size_t>(1, num_x)),
-      ny(std::max<std::size_t>(1, num_y)),
-      ntheta(std::max<std::size_t>(1, num_theta))
+GridPartition::GridPartition(const domain::BoundingBox& total_state_domain,
+                             std::size_t initial_cell_count_x,
+                             std::size_t initial_cell_count_y,
+                             std::size_t initial_cell_count_theta)
+    : state_domain(total_state_domain),
+      cell_count_x(std::max<std::size_t>(1, initial_cell_count_x)),
+      cell_count_y(std::max<std::size_t>(1, initial_cell_count_y)),
+      cell_count_theta(std::max<std::size_t>(1, initial_cell_count_theta))
 {
-    dx     = domain.x_range.width() / static_cast<double>(nx);
-    dy     = domain.y_range.width() / static_cast<double>(ny);
-    dtheta = domain.theta_range.width() / static_cast<double>(ntheta);
+    cell_width_x     = state_domain.x_range.width() / static_cast<double>(cell_count_x);
+    cell_width_y     = state_domain.y_range.width() / static_cast<double>(cell_count_y);
+    cell_width_theta = state_domain.theta_range.width() / static_cast<double>(cell_count_theta);
 }
 
 std::size_t GridPartition::total_cells() const noexcept {
-    return nx * ny * ntheta;
+    return cell_count_x * cell_count_y * cell_count_theta;
 }
 
-std::size_t GridPartition::coord_to_flat(std::size_t ix, std::size_t iy, std::size_t itheta) const noexcept {
-    return ix * (ny * ntheta) + iy * ntheta + itheta;
+std::size_t GridPartition::coord_to_flat(std::size_t index_x,
+                                         std::size_t index_y,
+                                         std::size_t index_theta) const noexcept
+{
+    return index_x * (cell_count_y * cell_count_theta) + index_y * cell_count_theta + index_theta;
 }
 
 GridIndex GridPartition::flat_to_coord(std::size_t cell_id) const noexcept {
-    std::size_t itheta = cell_id % ntheta;
-    std::size_t rem = cell_id / ntheta;
-    std::size_t iy = rem % ny;
-    std::size_t ix = rem / ny;
-    return { ix, iy, itheta };
+    std::size_t index_theta = cell_id % cell_count_theta;
+    std::size_t remainder = cell_id / cell_count_theta;
+    std::size_t index_y = remainder % cell_count_y;
+    std::size_t index_x = remainder / cell_count_y;
+    return { index_x, index_y, index_theta };
 }
 
-double GridPartition::normalize_angle(double theta) noexcept {
-    while (theta > M_PI)  theta -= 2.0 * M_PI;
-    while (theta < -M_PI) theta += 2.0 * M_PI;
-    return theta;
+double GridPartition::normalize_angle(double angle_radians) noexcept {
+    while (angle_radians > M_PI)  angle_radians -= 2.0 * M_PI;
+    while (angle_radians < -M_PI) angle_radians += 2.0 * M_PI;
+    return angle_radians;
 }
 
-GridIndex GridPartition::quantize_point(double x, double y, double theta) const noexcept {
-    theta = normalize_angle(theta);
+GridIndex GridPartition::quantize_point(double x_coordinate,
+                                        double y_coordinate,
+                                        double theta_angle) const noexcept
+{
+    theta_angle = normalize_angle(theta_angle);
 
-    double rel_x = (x - domain.x_range.lower) / dx;
-    double rel_y = (y - domain.y_range.lower) / dy;
-    double rel_th = (theta - domain.theta_range.lower) / dtheta;
+    double relative_x = (x_coordinate - state_domain.x_range.lower_bound) / cell_width_x;
+    double relative_y = (y_coordinate - state_domain.y_range.lower_bound) / cell_width_y;
+    double relative_theta = (theta_angle - state_domain.theta_range.lower_bound) / cell_width_theta;
 
-    long long ix = static_cast<long long>(std::floor(rel_x));
-    long long iy = static_cast<long long>(std::floor(rel_y));
-    long long ith = static_cast<long long>(std::floor(rel_th));
+    long long discrete_x = static_cast<long long>(std::floor(relative_x));
+    long long discrete_y = static_cast<long long>(std::floor(relative_y));
+    long long discrete_theta = static_cast<long long>(std::floor(relative_theta));
 
-    ix = std::clamp<long long>(ix, 0, static_cast<long long>(nx - 1));
-    iy = std::clamp<long long>(iy, 0, static_cast<long long>(ny - 1));
-    ith = std::clamp<long long>(ith, 0, static_cast<long long>(ntheta - 1));
+    discrete_x = std::clamp<long long>(discrete_x, 0, static_cast<long long>(cell_count_x - 1));
+    discrete_y = std::clamp<long long>(discrete_y, 0, static_cast<long long>(cell_count_y - 1));
+    discrete_theta = std::clamp<long long>(discrete_theta, 0, static_cast<long long>(cell_count_theta - 1));
 
-    return { static_cast<std::size_t>(ix),
-             static_cast<std::size_t>(iy),
-             static_cast<std::size_t>(ith) };
+    return { static_cast<std::size_t>(discrete_x),
+             static_cast<std::size_t>(discrete_y),
+             static_cast<std::size_t>(discrete_theta) };
 }
 
-std::size_t GridPartition::point_to_flat(double x, double y, double theta) const noexcept {
-    GridIndex idx = quantize_point(x, y, theta);
-    return coord_to_flat(idx.ix, idx.iy, idx.itheta);
+std::size_t GridPartition::point_to_flat(double x_coordinate,
+                                         double y_coordinate,
+                                         double theta_angle) const noexcept
+{
+    GridIndex grid_index = quantize_point(x_coordinate, y_coordinate, theta_angle);
+    return coord_to_flat(grid_index.index_x, grid_index.index_y, grid_index.index_theta);
 }
 
-domain::BoundingBox GridPartition::get_cell_box(const GridIndex& idx) const noexcept {
-    double x0 = domain.x_range.lower + static_cast<double>(idx.ix) * dx;
-    double y0 = domain.y_range.lower + static_cast<double>(idx.iy) * dy;
-    double th0 = domain.theta_range.lower + static_cast<double>(idx.itheta) * dtheta;
+domain::BoundingBox GridPartition::get_cell_box(const GridIndex& grid_index) const noexcept {
+    double cell_origin_x = state_domain.x_range.lower_bound + static_cast<double>(grid_index.index_x) * cell_width_x;
+    double cell_origin_y = state_domain.y_range.lower_bound + static_cast<double>(grid_index.index_y) * cell_width_y;
+    double cell_origin_theta = state_domain.theta_range.lower_bound + static_cast<double>(grid_index.index_theta) * cell_width_theta;
 
     return domain::BoundingBox(
-        domain::Interval(x0, x0 + dx),
-        domain::Interval(y0, y0 + dy),
-        domain::Interval(th0, th0 + dtheta)
+        domain::Interval(cell_origin_x, cell_origin_x + cell_width_x),
+        domain::Interval(cell_origin_y, cell_origin_y + cell_width_y),
+        domain::Interval(cell_origin_theta, cell_origin_theta + cell_width_theta)
     );
 }
 
@@ -85,75 +94,76 @@ domain::BoundingBox GridPartition::get_cell_box(std::size_t cell_id) const noexc
     return get_cell_box(flat_to_coord(cell_id));
 }
 
-std::vector<std::size_t> GridPartition::query_overlapping_cells(const domain::BoundingBox& box) const {
-    std::vector<std::size_t> result;
+std::vector<std::size_t> GridPartition::query_overlapping_cells(const domain::BoundingBox& query_box) const {
+    std::vector<std::size_t> overlapping_cell_indices;
 
-    if (!domain.intersects(box)) {
-        return result;
+    if (!state_domain.intersects(query_box)) {
+        return overlapping_cell_indices;
     }
 
-    long long ix_min = static_cast<long long>(std::floor((box.x_range.lower - domain.x_range.lower) / dx));
-    long long ix_max = static_cast<long long>(std::ceil((box.x_range.upper - domain.x_range.lower) / dx)) - 1;
+    long long min_cell_x = static_cast<long long>(std::floor((query_box.x_range.lower_bound - state_domain.x_range.lower_bound) / cell_width_x));
+    long long max_cell_x = static_cast<long long>(std::ceil((query_box.x_range.upper_bound - state_domain.x_range.lower_bound) / cell_width_x)) - 1;
 
-    long long iy_min = static_cast<long long>(std::floor((box.y_range.lower - domain.y_range.lower) / dy));
-    long long iy_max = static_cast<long long>(std::ceil((box.y_range.upper - domain.y_range.lower) / dy)) - 1;
+    long long min_cell_y = static_cast<long long>(std::floor((query_box.y_range.lower_bound - state_domain.y_range.lower_bound) / cell_width_y));
+    long long max_cell_y = static_cast<long long>(std::ceil((query_box.y_range.upper_bound - state_domain.y_range.lower_bound) / cell_width_y)) - 1;
 
-    ix_min = std::clamp<long long>(ix_min, 0, static_cast<long long>(nx - 1));
-    ix_max = std::clamp<long long>(ix_max, 0, static_cast<long long>(nx - 1));
-    if (ix_max < ix_min) ix_max = ix_min;
+    min_cell_x = std::clamp<long long>(min_cell_x, 0, static_cast<long long>(cell_count_x - 1));
+    max_cell_x = std::clamp<long long>(max_cell_x, 0, static_cast<long long>(cell_count_x - 1));
+    if (max_cell_x < min_cell_x) max_cell_x = min_cell_x;
 
-    iy_min = std::clamp<long long>(iy_min, 0, static_cast<long long>(ny - 1));
-    iy_max = std::clamp<long long>(iy_max, 0, static_cast<long long>(ny - 1));
-    if (iy_max < iy_min) iy_max = iy_min;
+    min_cell_y = std::clamp<long long>(min_cell_y, 0, static_cast<long long>(cell_count_y - 1));
+    max_cell_y = std::clamp<long long>(max_cell_y, 0, static_cast<long long>(cell_count_y - 1));
+    if (max_cell_y < min_cell_y) max_cell_y = min_cell_y;
 
-    // Handle angular interval with periodic wrap-around
-    double r_min = box.theta_range.lower;
-    double r_max = box.theta_range.upper;
+    // Handle angular interval with periodic wrap-around at +/- PI
+    double theta_range_min = query_box.theta_range.lower_bound;
+    double theta_range_max = query_box.theta_range.upper_bound;
 
-    std::vector<std::pair<std::size_t, std::size_t>> theta_ranges;
+    std::vector<std::pair<std::size_t, std::size_t>> theta_segment_ranges;
 
-    if (box.theta_range.width() >= 2.0 * M_PI - 1e-6) {
-        theta_ranges.emplace_back(0, ntheta - 1);
+    if (query_box.theta_range.width() >= 2.0 * M_PI - 1e-6) {
+        theta_segment_ranges.emplace_back(0, cell_count_theta - 1);
     } else {
-        if (r_min < -M_PI && r_max >= -M_PI) {
-            r_min += 2.0 * M_PI;
-        } else if (r_min < -M_PI && r_max < -M_PI) {
-            r_min += 2.0 * M_PI;
-            r_max += 2.0 * M_PI;
-        } else if (r_max > M_PI && r_min <= M_PI) {
-            r_max -= 2.0 * M_PI;
-        } else if (r_max > M_PI && r_min > M_PI) {
-            r_max -= 2.0 * M_PI;
-            r_min -= 2.0 * M_PI;
+        if (theta_range_min < -M_PI && theta_range_max >= -M_PI) {
+            theta_range_min += 2.0 * M_PI;
+        } else if (theta_range_min < -M_PI && theta_range_max < -M_PI) {
+            theta_range_min += 2.0 * M_PI;
+            theta_range_max += 2.0 * M_PI;
+        } else if (theta_range_max > M_PI && theta_range_min <= M_PI) {
+            theta_range_max -= 2.0 * M_PI;
+        } else if (theta_range_max > M_PI && theta_range_min > M_PI) {
+            theta_range_max -= 2.0 * M_PI;
+            theta_range_min -= 2.0 * M_PI;
         }
 
-        long long lo = static_cast<long long>(std::floor((r_min - domain.theta_range.lower) / dtheta));
-        long long hi = static_cast<long long>(std::ceil((r_max - domain.theta_range.lower) / dtheta)) - 1;
+        long long min_cell_theta = static_cast<long long>(std::floor((theta_range_min - state_domain.theta_range.lower_bound) / cell_width_theta));
+        long long max_cell_theta = static_cast<long long>(std::ceil((theta_range_max - state_domain.theta_range.lower_bound) / cell_width_theta)) - 1;
 
-        lo = std::clamp<long long>(lo, 0, static_cast<long long>(ntheta - 1));
-        hi = std::clamp<long long>(hi, 0, static_cast<long long>(ntheta - 1));
+        min_cell_theta = std::clamp<long long>(min_cell_theta, 0, static_cast<long long>(cell_count_theta - 1));
+        max_cell_theta = std::clamp<long long>(max_cell_theta, 0, static_cast<long long>(cell_count_theta - 1));
 
-        if (lo <= hi) {
-            theta_ranges.emplace_back(static_cast<std::size_t>(lo), static_cast<std::size_t>(hi));
+        if (min_cell_theta <= max_cell_theta) {
+            theta_segment_ranges.emplace_back(static_cast<std::size_t>(min_cell_theta),
+                                              static_cast<std::size_t>(max_cell_theta));
         } else {
-            theta_ranges.emplace_back(static_cast<std::size_t>(lo), ntheta - 1);
-            theta_ranges.emplace_back(0, static_cast<std::size_t>(hi));
+            theta_segment_ranges.emplace_back(static_cast<std::size_t>(min_cell_theta), cell_count_theta - 1);
+            theta_segment_ranges.emplace_back(0, static_cast<std::size_t>(max_cell_theta));
         }
     }
 
-    for (long long ix = ix_min; ix <= ix_max; ++ix) {
-        for (long long iy = iy_min; iy <= iy_max; ++iy) {
-            for (const auto& [th_a, th_b] : theta_ranges) {
-                for (std::size_t ith = th_a; ith <= th_b; ++ith) {
-                    result.push_back(coord_to_flat(static_cast<std::size_t>(ix),
-                                                   static_cast<std::size_t>(iy),
-                                                   ith));
+    for (long long cell_x = min_cell_x; cell_x <= max_cell_x; ++cell_x) {
+        for (long long cell_y = min_cell_y; cell_y <= max_cell_y; ++cell_y) {
+            for (const auto& [start_theta_idx, end_theta_idx] : theta_segment_ranges) {
+                for (std::size_t cell_theta = start_theta_idx; cell_theta <= end_theta_idx; ++cell_theta) {
+                    overlapping_cell_indices.push_back(coord_to_flat(static_cast<std::size_t>(cell_x),
+                                                                     static_cast<std::size_t>(cell_y),
+                                                                     cell_theta));
                 }
             }
         }
     }
 
-    return result;
+    return overlapping_cell_indices;
 }
 
 } // namespace symbolic::grid
