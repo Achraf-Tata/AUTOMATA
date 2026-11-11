@@ -1,130 +1,33 @@
 cmake_minimum_required(VERSION 3.20)
-project(robot_navigation VERSION 1.0 LANGUAGES CXX)
+project(AcademicPrototype LANGUAGES CXX)
 
-# ---------------------------------------------------------------------------
-# C++ standard
-# ---------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# ---------------------------------------------------------------------------
-# Compiler flags
-# ---------------------------------------------------------------------------
 if(MSVC)
-    add_compile_options(/O2 /arch:AVX2 /W4 /MP)
-    add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
-    add_link_options(/STACK:8388608)
+    add_compile_options(/W4 /permissive- /utf-8 /O2)
 else()
-    add_compile_options(-O3 -march=native -Wall)
+    add_compile_options(-Wall -Wextra -Wpedantic -O3)
 endif()
 
-# ---------------------------------------------------------------------------
-# OpenMP (required)
-# ---------------------------------------------------------------------------
-find_package(OpenMP REQUIRED)
-
-# ---------------------------------------------------------------------------
-# OpenGL (required)
-# ---------------------------------------------------------------------------
-find_package(OpenGL REQUIRED)
-
-# ---------------------------------------------------------------------------
-# FetchContent
-# ---------------------------------------------------------------------------
-include(FetchContent)
-
-# -- GLFW --
-FetchContent_Declare(
-    glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG        3.4
-)
-set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(glfw)
-
-# -- Dear ImGui --
-FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        v1.91.5
-)
-FetchContent_MakeAvailable(imgui)
-
-add_library(imgui_lib STATIC
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(imgui_lib PUBLIC
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
-target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
-
-# ---------------------------------------------------------------------------
-# Executable: robot_navigation
-# ---------------------------------------------------------------------------
-add_executable(robot_navigation
-    src/main_robot.cpp
-    src/app_state.cpp
-    src/ui_theme.cpp
-    src/simulation_engine.cpp
-    src/arena_view.cpp
-    src/control_panel.cpp
-    src/popup_dialogs.cpp
+set(PROTOTYPE_SOURCES
+    src/interval.cpp
+    src/bounding_box.cpp
+    src/grid_partition.cpp
+    src/dfa.cpp
     src/product_automaton.cpp
-    src/reachability_cpu.cpp
+    src/unicycle_model.cpp
+    src/transition_system.cpp
+    src/backward_reachability.cpp
+    src/simulator.cpp
 )
 
-set_target_properties(robot_navigation PROPERTIES
-    OUTPUT_NAME robot_navigation
-    WIN32_EXECUTABLE TRUE
-)
+add_library(prototype_core STATIC ${PROTOTYPE_SOURCES})
+target_include_directories(prototype_core PUBLIC include)
 
-target_include_directories(robot_navigation PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
+add_executable(prototype_navigation src/main.cpp)
+target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
-target_link_libraries(robot_navigation PRIVATE
-    OpenGL::GL
-    glfw
-    imgui_lib
-    OpenMP::OpenMP_CXX
-)
-
-# Suppress background console window on Windows
-if(WIN32)
-    if(MSVC)
-        target_link_libraries(robot_navigation PRIVATE opengl32)
-        target_link_options(robot_navigation PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
-    endif()
-endif()
-
-# ---------------------------------------------------------------------------
-# Test Executable: test_robot
-# ---------------------------------------------------------------------------
-add_executable(test_robot
-    tests/test_robot.cpp
-    src/product_automaton.cpp
-    src/reachability_cpu.cpp
-)
-target_include_directories(test_robot PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(test_robot PRIVATE
-    OpenMP::OpenMP_CXX
-)
-
-# ---------------------------------------------------------------------------
-# Install
-# ---------------------------------------------------------------------------
-install(TARGETS robot_navigation test_robot RUNTIME DESTINATION bin)
+add_executable(test_prototype tests/test_prototype.cpp)
+target_link_libraries(test_prototype PRIVATE prototype_core)

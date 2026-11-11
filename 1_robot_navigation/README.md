@@ -1,117 +1,115 @@
-# Mobile Robot Navigation System
+# Symbolic Control: Standard Academic Prototype (C++20)
 
-Symbolic control and automated synthesis for a discrete-time unicycle robot under bounded disturbances in a 10 x 10 m arena.
+## Overview
 
----
+This directory contains a modular, self-contained academic prototype implementing the foundational pipeline of symbolic control for a unicycle mobile robot with bounded disturbances, following Antoine Girard (2024) and Adnane Saoud's course syllabus.
 
-## 1. System Dynamics and Control Goal
-
-We consider the unicycle kinematic model with sampling period $\tau = 1.0\text{ s}$:
-
-$$
-\begin{aligned}
-x_1(t+1) &= x_1(t) + \tau u_1(t) \cos(x_3(t)) + \tau w_1(t) \\
-x_2(t+1) &= x_2(t) + \tau u_1(t) \sin(x_3(t)) + \tau w_2(t) \\
-x_3(t+1) &= x_3(t) + \tau u_2(t) + \tau w_3(t) \pmod{2\pi} \in [-\pi, \pi]
-\end{aligned}
-$$
-
-* **State**: $x = (x_1, x_2, x_3) \in [0, 10] \times [0, 10] \times [-\pi, \pi]$.
-* **Input**: $u = (u_1, u_2) \in U_1 \times U_2$ with:
-  * Linear velocity $u_1 \in \{0.25, 0.625, 1.0\}\text{ m/s}$
-  * Angular velocity $u_2 \in \{-1.0, -0.5, 0.0, 0.5, 1.0\}\text{ rad/s}$
-  * Total discrete actions: $3 \times 5 = 15$ control inputs.
-* **Disturbance**: Bounded noise $w_i \in [-0.05, 0.05]$ on each coordinate.
-* **Workspace Discretization**:
-  * $N_1 = 100$ cells along $x_1$ ($\Delta x_1 = 0.1\text{ m}$)
-  * $N_2 = 100$ cells along $x_2$ ($\Delta x_2 = 0.1\text{ m}$)
-  * $N_3 = 30$ bins along heading $x_3$ ($\Delta x_3 \approx 0.2094\text{ rad}$)
-  * Total state partition: $100 \times 100 \times 30 = 300,000$ cells.
-* **DFA Specification**: 5 discrete automaton modes enforcing:
-  * Visit Waypoint $R_1$ OR Waypoint $R_2$ (mutually exclusive)
-  * Subsequently reach Goal $R_3$
-  * Never enter Obstacle $R_4$
-  * Total product automaton states: $300,000 \times 5 = 1,500,000$ states.
+The prototype is designed as an educational milestone representative of what a student or researcher would typically achieve in a 3-week project phase, focusing on clear software architecture, clean object-oriented principles, and numerical correctness.
 
 ---
 
-## 2. What is `controller.bin`?
+## Architectural Structure
 
-`controller.bin` is a precomputed binary file containing:
-1. **The backward reachability value function** $V(x_1, x_2, \theta, q)$ (1,500,000 float entries, 6.0 MB).
-2. **The synthesized feedback policy** $ctrl(x_1, x_2, \theta, q)$ (1,500,000 unsigned byte entries, 1.5 MB).
+The codebase is organized into single-responsibility modules following standard software engineering practices:
 
-### Why do we need it?
-Running symbolic abstraction and backward reachability across 1.5 million product states takes ~1.2 to 2.0 seconds of OpenMP parallel execution. By serializing the resulting tables to `controller.bin`:
-* The application loads and initializes in less than 2 milliseconds on startup.
-* Closed-loop rollouts, trajectory visualization, and Monte Carlo verification can run immediately without recomputing the policy each time.
-* If arena regions are modified, the user can re-synthesize and click "Save" to update `controller.bin`.
-
----
-
-## 3. Modular Architecture
-
-The codebase is refactored into distinct, single-responsibility modules:
-
-| Module | Files | Responsibility |
-| :--- | :--- | :--- |
-| **State Management** | `include/app_state.hpp`<br>`src/app_state.cpp` | Pure data models: arena geometry, robot poses, controller tables, telemetry, and modal triggers. |
-| **UI Theme & Styling** | `include/ui_theme.hpp`<br>`src/ui_theme.cpp` | Warm cream paper theme, Segoe UI typography, custom cards, buttons, badges, and toggle switches. |
-| **Arena Canvas** | `include/arena_view.hpp`<br>`src/arena_view.cpp` | 10x10 arena canvas, coordinate axes, interactive drag/resize handles, active path glow, robot arrow cursor, and legend. |
-| **Control Panel** | `include/control_panel.hpp`<br>`src/control_panel.cpp` | Top navigation bar and 5 stacked cards (Controller, Simulation, Run result, Monte Carlo, Arena Regions). |
-| **Modal Popups** | `include/popup_dialogs.hpp`<br>`src/popup_dialogs.cpp` | Modals for edge cases (Obstacle, Out of bounds, DFA violation, Timeout, Uncontrollable) and arena modification warnings. |
-| **Simulation Engine** | `include/simulation_engine.hpp`<br>`src/simulation_engine.cpp` | Step simulation, closed-loop trajectories, Monte Carlo analysis, and OpenMP reachability solver integration. |
-| **Main Orchestrator** | `src/main_robot.cpp` | Application entry point: initializes GLFW/OpenGL, loads theme/fonts, executes render loop. |
-| **Automaton & Solver** | `include/product_automaton.hpp`<br>`include/reachability_cpu.hpp` | Formal DFA transition rules and OpenMP fixed-point reachability game. |
-
----
-
-## 4. Modal Dialogs and Edge-Case Handling
-
-### Edge-Case Alerts
-When an anomaly occurs during a simulation rollout, a modal popup appears providing:
-1. **What happened**: Detailed description of the runtime event.
-2. **Why it happened**: Underlying formal or physical root cause (e.g. state outside winning domain, disturbance push).
-3. **Recommendation**: Clear action steps to resolve the issue.
-
-Edge cases handled:
-* **Obstacle Collision**: Robot entered $R_4$.
-* **Out of Bounds**: Robot exited the $[0, 10] \times [0, 10]$ workspace.
-* **Specification Violation**: Robot visited both $R_1$ and $R_2$ before reaching $R_3$.
-* **Horizon Timeout**: Reached step limit without reaching $R_3$.
-* **Uncontrollable State**: Initial or current state has no defined control ($V = \infty$).
-
-### Arena Layout Modified Warning
-When any region ($R_1, R_2, R_3, R_4$) is moved or resized by dragging in the arena, the application marks the layout as modified. Clicking "Run simulation" triggers a warning dialog offering:
-* **Solve and simulate**: Recomputes the controller for the new layout and runs simulation automatically upon completion.
-* **Solve only**: Recomputes the controller without immediately running.
-* **Continue anyway**: Tests the old controller against the new arena layout.
-* **Cancel**: Returns to the editor without changes.
+```
+academic_prototype/
+|-- CMakeLists.txt              # CMake build configuration
+|-- README.md                   # Technical documentation
+|-- include/
+|   |-- interval.hpp            # 1D interval arithmetic [a, b]
+|   |-- bounding_box.hpp        # 3D continuous hyper-rectangles
+|   |-- grid_partition.hpp      # Uniform state space quantizer
+|   |-- unicycle_model.hpp      # Continuous dynamics and reachable growth bounds
+|   |-- transition_system.hpp   # Finite symbolic abstraction (Q, U, Delta)
+|   |-- backward_reachability.hpp # Fixed-point backward reachability solver
+|   `-- simulator.hpp           # Closed-loop disturbed unicycle simulator
+|-- src/
+|   |-- interval.cpp
+|   |-- bounding_box.cpp
+|   |-- grid_partition.cpp
+|   |-- unicycle_model.cpp
+|   |-- transition_system.cpp
+|   |-- backward_reachability.cpp
+|   |-- simulator.cpp
+|   `-- main.cpp                # Prototype driver application
+`-- tests/
+    `-- test_prototype.cpp      # Unit test suite
+```
 
 ---
 
-## 5. Build and Execution
+## Theoretical Foundations
+
+### 1. State Space Discretization (`GridPartition`)
+The continuous domain is defined by:
+$$X = [0, 10] \times [0, 10] \times [-\pi, \pi]$$
+Partitioned into $N_x \times N_y \times N_\theta$ uniform hyper-rectangular cells of width:
+$$\eta = (\Delta x, \Delta y, \Delta \theta) = \left( \frac{10}{N_x}, \frac{10}{N_y}, \frac{2\pi}{N_\theta} \right)$$
+Each discrete state $q \in \{0, \dots, |Q|-1\}$ bijectively maps to a cell coordinate $(i_x, i_y, i_\theta)$ and continuous center $c \in \mathbb{R}^3$.
+
+### 2. Reachable Set Over-Approximation (`UnicycleModel`)
+The perturbed unicycle dynamics are:
+$$\begin{cases}
+x(t+1) = x(t) + \tau (v \cos\theta + w_1) \\
+y(t+1) = y(t) + \tau (v \sin\theta + w_2) \\
+\theta(t+1) = \theta(t) + \tau (\omega + w_3) \pmod{2\pi}
+\end{cases}$$
+under sampling period $\tau = 1.0\text{ s}$, discrete inputs $u = (v, \omega) \in U$, and disturbance bounds $w \in W = [-\mu, \mu]^3$ with $\mu = 0.05$.
+
+For a cell with center $c$ and radii $r = \frac{\eta}{2}$, the continuous reachable set is over-approximated by an axis-aligned bounding box centered at $c'$ with expansion radii $r'$:
+$$c_1' = c_1 + \tau v \cos(c_3), \quad r_1' = r_1 + \tau |v| r_3 + \tau \mu$$
+$$c_2' = c_2 + \tau v \sin(c_3), \quad r_2' = r_2 + \tau |v| r_3 + \tau \mu$$
+$$c_3' = c_3 + \tau \omega, \quad r_3' = r_3 + \tau \mu$$
+
+### 3. Symbolic Abstraction (`TransitionSystem`)
+The transition relation $\Delta \subseteq Q \times U \times Q$ connects cell $q$ to cell $q'$ under input $u$ if:
+$$\text{ReachableBox}(q, u) \cap \text{CellBox}(q') \neq \emptyset$$
+
+### 4. Backward Reachability Synthesis (`BackwardReachabilitySolver`)
+Given a target set $T \subseteq Q$ and obstacle set $O \subseteq Q$, the backward controllable fixed-point algorithm computes the sequence of winning sets $S_k$:
+$$S_0 = T \setminus O$$
+$$S_{k+1} = S_k \cup \left\{ q \in Q \setminus O \mid \exists u \in U, \emptyset \neq \Delta(q, u) \subseteq S_k \text{ and } \Delta(q, u) \cap O = \emptyset \right\}$$
+The iteration terminates when $S_{k+1} = S_k$. For each $q \in S^*$, the feedback controller is stored:
+$$\kappa(q) = u^*$$
+
+### 5. Closed-Loop Simulation (`ClosedLoopSimulator`)
+Given initial continuous pose $x_0$, the simulator iterates:
+1. Quantize $x_k \to q_k = \text{quantize}(x_k)$.
+2. If $q_k \in T$, terminate with success.
+3. If $q_k \in O$, terminate with collision.
+4. Retrieve control $u_k = \kappa(q_k)$.
+5. Apply step: $x_{k+1} = f(x_k, u_k, w_k)$ where $w_k \in [-\mu, \mu]^3$ is sampled uniformly.
+
+---
+
+## Building and Running
 
 ### Prerequisites
-* C++20 compiler (Visual Studio 2022 Community with MSVC)
-* CMake 3.20 or newer
-* OpenGL and OpenMP
+* C++20 compliant compiler (GCC 11+, Clang 13+, MSVC 2022)
+* CMake 3.20+
 
-### Build Commands
-```powershell
-cd F:\AUTOMATA\1_robot_navigation
-cmake -B build -DCMAKE_BUILD_TYPE=Release
+### Build Instructions
+```bash
+# Configure
+cmake -B build -S .
+
+# Build
 cmake --build build --config Release
 ```
 
-### Running the Executable
-* **GUI Application**:
-  ```powershell
-  .\build\Release\robot_navigation.exe
-  ```
-  *Built with `/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup` to suppress any background Windows console window.*
+### Running Tests
+```bash
+# Run unit test suite
+./build/Release/test_prototype.exe
+```
 
-* **Automated Test Suite**:
-  ```powershell
-  .\build\Release\test_robot.exe
-  ```
+### Running the Driver Application
+```bash
+# Run with default resolution (50 x 50 x 20 = 50,000 cells)
+./build/Release/prototype_navigation.exe
+
+# Or specify custom resolution (nx ny ntheta)
+./build/Release/prototype_navigation.exe 40 40 16
+```
+

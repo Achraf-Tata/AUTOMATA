@@ -1,86 +1,53 @@
 #pragma once
-#ifndef _USE_MATH_DEFINES
-#define _USE_MATH_DEFINES
-#endif
+
+#include "bounding_box.hpp"
+#include <vector>
 #include <array>
-#include <cmath>
-#include <algorithm>
+#include <cstddef>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-namespace unicycle {
+namespace symbolic::model {
 
 struct State {
-    double x;
-    double y;
-    double theta;
+    double x_position = 0.0;
+    double y_position = 0.0;
+    double heading_angle = 0.0;
 };
 
 struct Control {
-    double v;
-    double w;
+    double linear_velocity = 0.0;
+    double angular_velocity = 0.0;
 };
 
-struct Box {
-    double x_min, x_max;
-    double y_min, y_max;
-    double th_min, th_max;
+struct DisturbanceBounds {
+    double max_disturbance_x = 0.05;
+    double max_disturbance_y = 0.05;
+    double max_disturbance_theta = 0.05;
 };
 
-inline constexpr std::array<Control, 15> ALL_CONTROLS = {{
-    {0.25,  -1.0}, {0.625, -1.0}, {1.0,   -1.0},
-    {0.25,  -0.5}, {0.625, -0.5}, {1.0,   -0.5},
-    {0.25,   0.0}, {0.625,  0.0}, {1.0,    0.0},
-    {0.25,   0.5}, {0.625,  0.5}, {1.0,    0.5},
-    {0.25,   1.0}, {0.625,  1.0}, {1.0,    1.0}
-}};
+class UnicycleModel {
+public:
+    double sampling_period_seconds = 1.0;
+    DisturbanceBounds disturbance_bounds;
+    std::vector<Control> discrete_controls;
 
-inline double wrap_angle(double a) noexcept {
-    while (a >  M_PI) a -= 2.0 * M_PI;
-    while (a < -M_PI) a += 2.0 * M_PI;
-    return a;
-}
+    UnicycleModel(double initial_sampling_period = 1.0,
+                  double initial_disturbance_bound = 0.05);
 
-inline State step(const State& s, const Control& u,
-                  const std::array<double, 3>& noise,
-                  double dt = 1.0) noexcept {
-    return {
-        s.x     + dt * u.v * std::cos(s.theta) + dt * noise[0],
-        s.y     + dt * u.v * std::sin(s.theta) + dt * noise[1],
-        wrap_angle(s.theta + dt * u.w          + dt * noise[2])
-    };
-}
+    [[nodiscard]] std::size_t num_controls() const noexcept;
+    [[nodiscard]] const Control& get_control(std::size_t control_index) const;
 
-inline Box compute_reachable_box(const Box& cell, const Control& u,
-                                  double noise_bound = 0.05,
-                                  double dt = 1.0) noexcept {
-    double x_lo = 1e18, x_hi = -1e18;
-    double y_lo = 1e18, y_hi = -1e18;
-    double th_lo = cell.th_min + dt * u.w;
-    double th_hi = cell.th_max + dt * u.w;
+    [[nodiscard]] State step_exact(
+        const State& current_state,
+        const Control& control_input,
+        const std::array<double, 3>& disturbance_vector = {0.0, 0.0, 0.0}) const noexcept;
 
-    const double thetas[7] = {
-        cell.th_min, cell.th_max,
-        (cell.th_min + cell.th_max) * 0.5,
-        -M_PI / 2.0, 0.0, M_PI / 2.0, M_PI
-    };
-    for (double th : thetas) {
-        if (th < cell.th_min || th > cell.th_max) continue;
-        double dx = dt * u.v * std::cos(th);
-        double dy = dt * u.v * std::sin(th);
-        x_lo = std::min(x_lo, cell.x_min + dx);
-        x_hi = std::max(x_hi, cell.x_max + dx);
-        y_lo = std::min(y_lo, cell.y_min + dy);
-        y_hi = std::max(y_hi, cell.y_max + dy);
-    }
+    // Over-approximation of reachable set from a cell bounding box under control input
+    [[nodiscard]] domain::BoundingBox compute_reachable_box(
+        const domain::BoundingBox& cell_box,
+        const Control& control_input) const noexcept;
 
-    return {
-        x_lo  - dt * noise_bound, x_hi  + dt * noise_bound,
-        y_lo  - dt * noise_bound, y_hi  + dt * noise_bound,
-        wrap_angle(th_lo - dt * noise_bound), wrap_angle(th_hi + dt * noise_bound)
-    };
-}
+private:
+    void initialize_discrete_controls();
+};
 
-} // namespace unicycle
+} // namespace symbolic::model
