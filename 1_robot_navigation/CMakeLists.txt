@@ -53,7 +53,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(imgui)
 
-# ImGui has no CMakeLists.txt — build it as a static library manually.
 add_library(imgui_lib STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -70,15 +69,24 @@ target_include_directories(imgui_lib PUBLIC
 target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
 
 # ---------------------------------------------------------------------------
-# Executable
+# Executable: robot_navigation
 # ---------------------------------------------------------------------------
 add_executable(robot_navigation
     src/main_robot.cpp
+    src/app_state.cpp
+    src/ui_theme.cpp
+    src/simulation_engine.cpp
+    src/arena_view.cpp
+    src/control_panel.cpp
+    src/popup_dialogs.cpp
     src/product_automaton.cpp
     src/reachability_cpu.cpp
 )
 
-set_target_properties(robot_navigation PROPERTIES OUTPUT_NAME robot_navigation)
+set_target_properties(robot_navigation PROPERTIES
+    OUTPUT_NAME robot_navigation
+    WIN32_EXECUTABLE TRUE
+)
 
 target_include_directories(robot_navigation PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -93,13 +101,16 @@ target_link_libraries(robot_navigation PRIVATE
     OpenMP::OpenMP_CXX
 )
 
-# Windows: explicitly link opengl32
+# Suppress background console window on Windows
 if(WIN32)
-    target_link_libraries(robot_navigation PRIVATE opengl32)
+    if(MSVC)
+        target_link_libraries(robot_navigation PRIVATE opengl32)
+        target_link_options(robot_navigation PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
-# Test Executable
+# Test Executable: test_robot
 # ---------------------------------------------------------------------------
 add_executable(test_robot
     tests/test_robot.cpp
@@ -114,13 +125,6 @@ target_link_libraries(test_robot PRIVATE
 )
 
 # ---------------------------------------------------------------------------
-# Optional CUDA block
-# ---------------------------------------------------------------------------
-if(CUDA IN_LIST LANGUAGES)
-    # TODO: add reachability_cuda.cu here when CUDA toolkit is installed
-endif()
-
-# ---------------------------------------------------------------------------
 # Install
 # ---------------------------------------------------------------------------
-install(TARGETS robot_navigation RUNTIME DESTINATION bin)
+install(TARGETS robot_navigation test_robot RUNTIME DESTINATION bin)
