@@ -26,15 +26,16 @@ class BackwardReachabilitySolver {
 public:
     static constexpr double UNREACHABLE_COST = 1e9;
 
+    // Default constructor
     BackwardReachabilitySolver() = default;
 
-    // Backward reachability synthesis over the Product Automaton (S x A)
+    // Synthesizes feedback policy over product automaton (S x A) using backward fixed-point iteration
     [[nodiscard]] SynthesisResult solve_product(
         const abstraction::TransitionSystem& transition_system,
         const automaton::ProductAutomaton& product_automaton,
         std::size_t maximum_iterations = 100);
 
-    // Baseline reachability over standard spatial partition
+    // Synthesizes feedback policy over standard spatial state partition (baseline reachability)
     [[nodiscard]] SynthesisResult solve_spatial(
         const abstraction::TransitionSystem& transition_system,
         const std::unordered_set<std::size_t>& target_spatial_states,

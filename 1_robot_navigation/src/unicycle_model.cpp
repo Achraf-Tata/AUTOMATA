@@ -7,6 +7,7 @@ namespace symbolic::model {
 #define M_PI 3.14159265358979323846
 #endif
 
+// Sets sampling period and disturbance bounds, then generates discrete control set
 UnicycleModel::UnicycleModel(double initial_sampling_period, double initial_disturbance_bound)
     : sampling_period_seconds(initial_sampling_period),
       disturbance_bounds{initial_disturbance_bound, initial_disturbance_bound, initial_disturbance_bound}
@@ -14,6 +15,7 @@ UnicycleModel::UnicycleModel(double initial_sampling_period, double initial_dist
     initialize_discrete_controls();
 }
 
+// Discretizes velocity and steering rate combinations
 void UnicycleModel::initialize_discrete_controls() {
     discrete_controls.clear();
     const double velocities[] = { 0.25, 0.50, 0.75 };
@@ -26,14 +28,17 @@ void UnicycleModel::initialize_discrete_controls() {
     }
 }
 
+// Returns the number of discrete controls
 std::size_t UnicycleModel::num_controls() const noexcept {
     return discrete_controls.size();
 }
 
+// Returns control action by index
 const Control& UnicycleModel::get_control(std::size_t control_index) const {
     return discrete_controls.at(control_index);
 }
 
+// Integrates kinematics by one step with additive disturbance
 State UnicycleModel::step_exact(const State& current_state,
                                const Control& control_input,
                                const std::array<double, 3>& disturbance_vector) const noexcept
@@ -49,6 +54,7 @@ State UnicycleModel::step_exact(const State& current_state,
     return { next_x, next_y, next_theta };
 }
 
+// Computes axis-aligned bounding box enclosing all reachable states from a cell
 domain::BoundingBox UnicycleModel::compute_reachable_box(const domain::BoundingBox& cell_box,
                                                         const Control& control_input) const noexcept
 {

@@ -16,6 +16,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// Unit test for interval arithmetic operations
 void test_interval_arithmetic() {
     symbolic::domain::Interval first_interval(2.0, 5.0);
     symbolic::domain::Interval second_interval(4.0, 7.0);
@@ -39,6 +40,7 @@ void test_interval_arithmetic() {
     std::cout << "[Test 1] Interval arithmetic passed.\n";
 }
 
+// Unit test for 3D continuous bounding boxes
 void test_bounding_box() {
     symbolic::domain::BoundingBox first_box(0.0, 2.0, 0.0, 2.0, -1.0, 1.0);
     symbolic::domain::BoundingBox second_box(1.0, 3.0, 1.0, 3.0, 0.0, 2.0);
@@ -55,6 +57,7 @@ void test_bounding_box() {
     std::cout << "[Test 2] Bounding box operations passed.\n";
 }
 
+// Unit test for uniform state space grid partition and indexing
 void test_grid_partition() {
     symbolic::domain::BoundingBox continuous_domain(0.0, 10.0, 0.0, 10.0, -M_PI, M_PI);
     symbolic::grid::GridPartition grid_partition(continuous_domain, 20, 20, 8);
@@ -80,6 +83,7 @@ void test_grid_partition() {
     std::cout << "[Test 3] Grid partition and indexing passed.\n";
 }
 
+// Unit test for DFA transitions, exclusivity, and word acceptance
 void test_dfa_and_language_algorithms() {
     auto dfa = symbolic::automaton::create_navigation_specification_dfa();
 
@@ -131,6 +135,7 @@ void test_dfa_and_language_algorithms() {
     std::cout << "[Test 4] DFA definition and language algorithms passed.\n";
 }
 
+// Unit test for product automaton state encoding and backward reachability
 void test_product_automaton_and_reachability_miniature() {
     symbolic::domain::BoundingBox miniature_domain(0.0, 4.0, 0.0, 4.0, -M_PI, M_PI);
     symbolic::grid::GridPartition miniature_grid(miniature_domain, 8, 8, 4);

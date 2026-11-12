@@ -29,23 +29,32 @@ public:
     std::unordered_set<AutomatonState> accepting_states;
     std::unordered_set<AutomatonState> sink_states;
 
+    // Initializes the 5-state DFA specification with accepting and sink sets
     DeterministicFiniteAutomaton();
 
+    // Evaluates transition delta(q, sigma) given current state and observation symbol
     [[nodiscard]] AutomatonState transition(
         AutomatonState current_state,
         ObservationSymbol observation_symbol) const noexcept;
 
-    // Language evaluation: determines if a finite word of observations belongs to L(A)
+    // Evaluates whether a finite word of observations leads to an accepting state
     [[nodiscard]] bool accepts_word(
         const std::vector<ObservationSymbol>& observation_word) const noexcept;
 
+    // Executes a sequence of observations starting from initial state and returns final state
     [[nodiscard]] AutomatonState evaluate_trace(
         const std::vector<ObservationSymbol>& observation_trace) const noexcept;
 
+    // Tests if state is an accepting goal state
     [[nodiscard]] bool is_accepting_state(AutomatonState state) const noexcept;
+
+    // Tests if state is a permanent trap sink state
     [[nodiscard]] bool is_sink_state(AutomatonState state) const noexcept;
 
+    // Converts DFA state enum to string name
     [[nodiscard]] static std::string state_to_string(AutomatonState state);
+
+    // Converts observation symbol enum to string name
     [[nodiscard]] static std::string symbol_to_string(ObservationSymbol symbol);
 
 private:

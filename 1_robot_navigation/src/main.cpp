@@ -17,6 +17,7 @@
 
 using namespace std;
 
+// Academic prototype driver demonstrating the complete symbolic control pipeline
 int main(int argc, char* argv[]) {
     size_t cell_count_x     = 30;
     size_t cell_count_y     = 30;

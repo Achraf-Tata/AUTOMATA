@@ -8,6 +8,7 @@ namespace symbolic::grid {
 #define M_PI 3.14159265358979323846
 #endif
 
+// Initializes partition geometry and computes per-axis cell widths
 GridPartition::GridPartition(const domain::BoundingBox& total_state_domain,
                              std::size_t initial_cell_count_x,
                              std::size_t initial_cell_count_y,
@@ -22,10 +23,12 @@ GridPartition::GridPartition(const domain::BoundingBox& total_state_domain,
     cell_width_theta = state_domain.theta_range.width() / static_cast<double>(cell_count_theta);
 }
 
+// Returns the total number of discrete states
 std::size_t GridPartition::total_cells() const noexcept {
     return cell_count_x * cell_count_y * cell_count_theta;
 }
 
+// Maps 3D indices (ix, iy, itheta) to a unique flat cell index
 std::size_t GridPartition::coord_to_flat(std::size_t index_x,
                                          std::size_t index_y,
                                          std::size_t index_theta) const noexcept
@@ -33,6 +36,7 @@ std::size_t GridPartition::coord_to_flat(std::size_t index_x,
     return index_x * (cell_count_y * cell_count_theta) + index_y * cell_count_theta + index_theta;
 }
 
+// Decodes a flat cell index into 3D discrete grid indices
 GridIndex GridPartition::flat_to_coord(std::size_t cell_id) const noexcept {
     std::size_t index_theta = cell_id % cell_count_theta;
     std::size_t remainder = cell_id / cell_count_theta;
@@ -41,15 +45,15 @@ GridIndex GridPartition::flat_to_coord(std::size_t cell_id) const noexcept {
     return { index_x, index_y, index_theta };
 }
 
+// Normalizes an angle into [-pi, pi]
 double GridPartition::normalize_angle(double angle_radians) noexcept {
     while (angle_radians > M_PI)  angle_radians -= 2.0 * M_PI;
     while (angle_radians < -M_PI) angle_radians += 2.0 * M_PI;
     return angle_radians;
 }
 
-GridIndex GridPartition::quantize_point(double x_coordinate,
-                                        double y_coordinate,
-                                        double theta_angle) const noexcept
+// Quantizes continuous coordinates to 3D grid indices with clamping
+GridIndex GridPartition::quantize_point(double x_coordinate,double y_coordinate,double theta_angle) const noexcept
 {
     theta_angle = normalize_angle(theta_angle);
 
@@ -70,6 +74,7 @@ GridIndex GridPartition::quantize_point(double x_coordinate,
              static_cast<std::size_t>(discrete_theta) };
 }
 
+// Quantizes continuous coordinates directly to a flat cell index
 std::size_t GridPartition::point_to_flat(double x_coordinate,
                                          double y_coordinate,
                                          double theta_angle) const noexcept
@@ -78,6 +83,7 @@ std::size_t GridPartition::point_to_flat(double x_coordinate,
     return coord_to_flat(grid_index.index_x, grid_index.index_y, grid_index.index_theta);
 }
 
+// Computes the continuous bounding box for a given 3D grid index
 domain::BoundingBox GridPartition::get_cell_box(const GridIndex& grid_index) const noexcept {
     double cell_origin_x = state_domain.x_range.lower_bound + static_cast<double>(grid_index.index_x) * cell_width_x;
     double cell_origin_y = state_domain.y_range.lower_bound + static_cast<double>(grid_index.index_y) * cell_width_y;
@@ -90,10 +96,12 @@ domain::BoundingBox GridPartition::get_cell_box(const GridIndex& grid_index) con
     );
 }
 
+// Computes the continuous bounding box for a flat cell index
 domain::BoundingBox GridPartition::get_cell_box(std::size_t cell_id) const noexcept {
     return get_cell_box(flat_to_coord(cell_id));
 }
 
+// Finds all cell indices overlapping a given query bounding box
 std::vector<std::size_t> GridPartition::query_overlapping_cells(const domain::BoundingBox& query_box) const {
     std::vector<std::size_t> overlapping_cell_indices;
 

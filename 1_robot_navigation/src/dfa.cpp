@@ -2,6 +2,7 @@
 
 namespace symbolic::automaton {
 
+// Constructor setting up initial, accepting, and sink states
 DeterministicFiniteAutomaton::DeterministicFiniteAutomaton() {
     initial_state = AutomatonState::Initial;
     accepting_states = { AutomatonState::GoalReached };
@@ -10,6 +11,7 @@ DeterministicFiniteAutomaton::DeterministicFiniteAutomaton() {
     initialize_transition_table();
 }
 
+// Configures deterministic state transition matrix delta(q, sigma)
 void DeterministicFiniteAutomaton::initialize_transition_table() {
     // Specification from project presentation:
     // "Go to R1 or to R2, but only to one of them, then in R3, while avoiding R4 all the way."
@@ -71,6 +73,7 @@ void DeterministicFiniteAutomaton::initialize_transition_table() {
     }
 }
 
+// Evaluates one transition step delta(q, sigma)
 AutomatonState DeterministicFiniteAutomaton::transition(
     AutomatonState current_state,
     ObservationSymbol observation_symbol) const noexcept
@@ -85,6 +88,7 @@ AutomatonState DeterministicFiniteAutomaton::transition(
     return transition_table[state_index][symbol_index];
 }
 
+// Executes a sequence of observations and returns the reached state
 AutomatonState DeterministicFiniteAutomaton::evaluate_trace(
     const std::vector<ObservationSymbol>& observation_trace) const noexcept
 {
@@ -98,6 +102,7 @@ AutomatonState DeterministicFiniteAutomaton::evaluate_trace(
     return current_state;
 }
 
+// Tests if the word leads to an accepting state
 bool DeterministicFiniteAutomaton::accepts_word(
     const std::vector<ObservationSymbol>& observation_word) const noexcept
 {
@@ -105,14 +110,17 @@ bool DeterministicFiniteAutomaton::accepts_word(
     return is_accepting_state(final_state);
 }
 
+// Checks if state is an accepting state
 bool DeterministicFiniteAutomaton::is_accepting_state(AutomatonState state) const noexcept {
     return accepting_states.find(state) != accepting_states.end();
 }
 
+// Checks if state is a permanent sink trap
 bool DeterministicFiniteAutomaton::is_sink_state(AutomatonState state) const noexcept {
     return sink_states.find(state) != sink_states.end();
 }
 
+// Converts automaton state to string representation
 std::string DeterministicFiniteAutomaton::state_to_string(AutomatonState state) {
     switch (state) {
         case AutomatonState::Initial:          return "q1 (Initial)";
@@ -124,6 +132,7 @@ std::string DeterministicFiniteAutomaton::state_to_string(AutomatonState state) 
     }
 }
 
+// Converts observation symbol to string representation
 std::string DeterministicFiniteAutomaton::symbol_to_string(ObservationSymbol symbol) {
     switch (symbol) {
         case ObservationSymbol::FreeSpace: return "FreeSpace";
@@ -135,6 +144,7 @@ std::string DeterministicFiniteAutomaton::symbol_to_string(ObservationSymbol sym
     }
 }
 
+// Factory function returning default navigation DFA
 DeterministicFiniteAutomaton create_navigation_specification_dfa() {
     return DeterministicFiniteAutomaton();
 }

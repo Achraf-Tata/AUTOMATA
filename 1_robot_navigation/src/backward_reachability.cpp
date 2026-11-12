@@ -4,6 +4,7 @@
 
 namespace symbolic::synthesis {
 
+// Solves fixed-point reachability game over the product automaton (S x A)
 SynthesisResult BackwardReachabilitySolver::solve_product(
     const abstraction::TransitionSystem& transition_system,
     const automaton::ProductAutomaton& product_automaton,
@@ -124,6 +125,7 @@ SynthesisResult BackwardReachabilitySolver::solve_product(
     return synthesis_result;
 }
 
+// Solves reachability game over spatial states to target set avoiding obstacles
 SynthesisResult BackwardReachabilitySolver::solve_spatial(
     const abstraction::TransitionSystem& transition_system,
     const std::unordered_set<std::size_t>& target_spatial_states,

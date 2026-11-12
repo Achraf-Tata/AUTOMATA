@@ -37,9 +37,10 @@ struct SimulationTrace {
 
 class ClosedLoopSimulator {
 public:
+    // Default constructor
     ClosedLoopSimulator() = default;
 
-    // Simulate under feedback policy synthesized over the Product Automaton (S x A)
+    // Simulates unicycle under feedback policy synthesized over product automaton (S x A)
     [[nodiscard]] SimulationTrace run_product_closed_loop(
         const model::State& initial_state,
         const grid::GridPartition& partition,
@@ -49,7 +50,7 @@ public:
         std::size_t maximum_steps = 100,
         bool apply_bounded_disturbances = true);
 
-    // Baseline spatial simulation
+    // Simulates unicycle under baseline spatial feedback policy
     [[nodiscard]] SimulationTrace run_spatial(
         const model::State& initial_state,
         const grid::GridPartition& partition,

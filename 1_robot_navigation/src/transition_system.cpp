@@ -2,12 +2,14 @@
 
 namespace symbolic::abstraction {
 
+// Allocates the 2D transition table of successor lists
 TransitionSystem::TransitionSystem(std::size_t total_states, std::size_t total_inputs)
     : state_count(total_states), input_count(total_inputs)
 {
     transition_table.resize(state_count, std::vector<std::vector<std::size_t>>(input_count));
 }
 
+// Builds the transition relation by computing reachable boxes for each cell and control
 void TransitionSystem::build_abstraction(
     const grid::GridPartition& partition,
     const model::UnicycleModel& model,
@@ -35,10 +37,12 @@ void TransitionSystem::build_abstraction(
     }
 }
 
+// Returns the list of post successor states for a given state and control
 const std::vector<std::size_t>& TransitionSystem::get_successors(std::size_t state_index, std::size_t control_index) const {
     return transition_table[state_index][control_index];
 }
 
+// Computes the total number of transitions in the graph
 std::size_t TransitionSystem::total_transitions() const noexcept {
     std::size_t count = 0;
     for (const auto& state_entry : transition_table) {
@@ -49,6 +53,7 @@ std::size_t TransitionSystem::total_transitions() const noexcept {
     return count;
 }
 
+// Checks if state index is valid
 bool TransitionSystem::is_valid_state(std::size_t state_index) const noexcept {
     return state_index < state_count;
 }

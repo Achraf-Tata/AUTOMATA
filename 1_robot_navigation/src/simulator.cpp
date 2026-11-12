@@ -4,6 +4,7 @@
 
 namespace symbolic::simulation {
 
+// Executes closed-loop simulation under synthesized product automaton feedback policy
 SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
     const model::State& initial_state,
     const grid::GridPartition& partition,
@@ -115,6 +116,7 @@ SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
     return simulation_trace;
 }
 
+// Executes closed-loop simulation under baseline spatial reachability feedback policy
 SimulationTrace ClosedLoopSimulator::run_spatial(
     const model::State& initial_state,
     const grid::GridPartition& partition,
