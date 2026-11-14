@@ -5,40 +5,45 @@
 
 namespace symbolic::domain {
 
+using namespace std;
+
+// 3D bounding box representing a region in robot state space (x, y, theta)
 class BoundingBox {
 public:
     Interval x_range;
     Interval y_range;
     Interval theta_range;
 
-    // Default constructor
+    // default constructor: creates zero-sized box at origin
     BoundingBox() = default;
 
-    // Construct 3D bounding box from three 1D intervals
+    // build box from three 1D intervals: [x_min, x_max], [y_min, y_max], [th_min, th_max]
     BoundingBox(const Interval& x_interval, const Interval& y_interval, const Interval& theta_interval);
 
-    // Construct 3D bounding box from explicit coordinate bounds
-    BoundingBox(double x_minimum, double x_maximum,
-                double y_minimum, double y_maximum,
-                double theta_minimum, double theta_maximum);
+    // build box from explicit min and max boundary coordinates
+    BoundingBox(double x_minimum, double x_maximum,double y_minimum, double y_maximum,double theta_minimum, double theta_maximum);
 
-    // Returns the 3D center point (x, y, theta)
-    [[nodiscard]] std::array<double, 3> center() const noexcept;
+    // 3D center point: {x_mid, y_mid, theta_mid}
+    [[nodiscard]] array<double, 3> center() const noexcept;
 
-    // Returns the 3D half-width radii (rx, ry, rtheta)
-    [[nodiscard]] std::array<double, 3> radii() const noexcept;
+    // 3D half-widths: {radius_x, radius_y, radius_theta}
+    [[nodiscard]] array<double, 3> radii() const noexcept;
 
-    // Tests whether a continuous point (x, y, theta) lies inside this box
+    // check if a robot pose (x, y, theta) is inside this box
     [[nodiscard]] bool contains(double x_coordinate, double y_coordinate, double theta_angle) const noexcept;
 
-    // Tests whether this box intersects another 3D bounding box
+    // check if this box overlaps with another 3D box (all 3 dimensions must overlap)
     [[nodiscard]] bool intersects(const BoundingBox& other_box) const noexcept;
 
-    // Computes the intersection box with another bounding box
+    // compute the common 3D overlapping region with another box
     [[nodiscard]] BoundingBox intersect_with(const BoundingBox& other_box) const noexcept;
 
-    // Checks if any dimension is empty or degenerate
+    // returns true if any coordinate interval is empty or invalid
     [[nodiscard]] bool is_empty() const noexcept;
 };
 
 } // namespace symbolic::domain
+
+namespace symbolic {
+    using domain::BoundingBox;
+}

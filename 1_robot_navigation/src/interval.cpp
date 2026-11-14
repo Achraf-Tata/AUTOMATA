@@ -3,64 +3,66 @@
 
 namespace symbolic::domain {
 
-// Constructs interval ensuring lower_bound <= upper_bound
-Interval::Interval(double initial_lower_bound, double initial_upper_bound)
-    : lower_bound(std::min(initial_lower_bound, initial_upper_bound)),
-      upper_bound(std::max(initial_lower_bound, initial_upper_bound)) {}
+using namespace std;
 
-// Returns interval width
+// construct interval and make sure lower is always <= upper
+Interval::Interval(double initial_lower_bound, double initial_upper_bound)
+    : lower_bound(min(initial_lower_bound, initial_upper_bound)),
+      upper_bound(max(initial_lower_bound, initial_upper_bound)) {}
+
+// interval length: upper - lower
 double Interval::width() const noexcept {
     return upper_bound - lower_bound;
 }
 
-// Returns half-width radius
+// half-width: (upper - lower) / 2
 double Interval::radius() const noexcept {
     return 0.5 * (upper_bound - lower_bound);
 }
 
-// Returns midpoint center
+// center position: (lower + upper) / 2
 double Interval::midpoint() const noexcept {
     return 0.5 * (lower_bound + upper_bound);
 }
 
-// Tests if value falls inside [lower, upper]
+// test if point x is inside [lower, upper]
 bool Interval::contains(double value) const noexcept {
     return value >= lower_bound && value <= upper_bound;
 }
 
-// Tests if this interval overlaps another
+// test if two intervals share at least one point
 bool Interval::overlaps(const Interval& other_interval) const noexcept {
     return lower_bound <= other_interval.upper_bound && upper_bound >= other_interval.lower_bound;
 }
 
-// Checks if lower bound exceeds upper bound
+// empty check: true if lower > upper
 bool Interval::is_empty() const noexcept {
     return lower_bound > upper_bound;
 }
 
-// Computes the overlapping sub-interval
+// find overlapping segment between two intervals
 Interval Interval::intersect_with(const Interval& other_interval) const noexcept {
-    double intersected_lower = std::max(lower_bound, other_interval.lower_bound);
-    double intersected_upper = std::min(upper_bound, other_interval.upper_bound);
+    double intersected_lower = max(lower_bound, other_interval.lower_bound);
+    double intersected_upper = min(upper_bound, other_interval.upper_bound);
     return Interval(intersected_lower, intersected_upper);
 }
 
-// Expands lower and upper bounds symmetrically
+// expand bounds outward by radius on both sides
 Interval Interval::inflate(double inflation_radius) const noexcept {
     return Interval(lower_bound - inflation_radius, upper_bound + inflation_radius);
 }
 
-// Adds two intervals
+// interval addition: [a, b] + [c, d] = [a + c, b + d]
 Interval Interval::operator+(const Interval& other_interval) const noexcept {
     return Interval(lower_bound + other_interval.lower_bound, upper_bound + other_interval.upper_bound);
 }
 
-// Subtracts two intervals
+// interval subtraction: [a, b] - [c, d] = [a - d, b - c]
 Interval Interval::operator-(const Interval& other_interval) const noexcept {
     return Interval(lower_bound - other_interval.upper_bound, upper_bound - other_interval.lower_bound);
 }
 
-// Multiplies interval by scalar, handling sign flip
+// multiply by scalar: if negative, swap lower and upper bounds
 Interval Interval::operator*(double scalar_multiplier) const noexcept {
     if (scalar_multiplier >= 0.0) {
         return Interval(lower_bound * scalar_multiplier, upper_bound * scalar_multiplier);
@@ -68,7 +70,7 @@ Interval Interval::operator*(double scalar_multiplier) const noexcept {
     return Interval(upper_bound * scalar_multiplier, lower_bound * scalar_multiplier);
 }
 
-// Commutative scalar multiplication
+// commutative multiplication: k * interval
 Interval operator*(double scalar_multiplier, const Interval& interval) noexcept {
     return interval * scalar_multiplier;
 }
