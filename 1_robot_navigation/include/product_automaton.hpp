@@ -9,66 +9,78 @@
 
 namespace symbolic::automaton {
 
+using namespace std;
+using namespace domain;
+using namespace grid;
+
+// coordinates of mission regions: R1, R2, R3 (goal), R4 (obstacle)
 struct ArenaRegions {
-    domain::BoundingBox waypoint_1{4.0, 5.0, 8.5, 9.5, -3.141592653589793, 3.141592653589793};
-    domain::BoundingBox waypoint_2{8.5, 9.5, 2.0, 3.0, -3.141592653589793, 3.141592653589793};
-    domain::BoundingBox goal      {2.0, 3.0, 0.5, 1.5, -3.141592653589793, 3.141592653589793};
-    domain::BoundingBox obstacle  {3.0, 7.0, 3.0, 7.0, -3.141592653589793, 3.141592653589793};
+    BoundingBox waypoint_1{4.0, 5.0, 8.5, 9.5, -3.141592653589793, 3.141592653589793};
+    BoundingBox waypoint_2{8.5, 9.5, 2.0, 3.0, -3.141592653589793, 3.141592653589793};
+    BoundingBox goal      {2.0, 3.0, 0.5, 1.5, -3.141592653589793, 3.141592653589793};
+    BoundingBox obstacle  {3.0, 7.0, 3.0, 7.0, -3.141592653589793, 3.141592653589793};
 };
 
+// combined state: (grid_cell, dfa_state)
 struct ProductState {
-    std::size_t spatial_cell_index = 0;
+    size_t spatial_cell_index = 0;
     AutomatonState automaton_state = AutomatonState::Initial;
 };
 
+// product automaton: combines physical robot cells with high-level DFA states
 class ProductAutomaton {
 public:
-    std::size_t spatial_cell_count = 0;
-    static constexpr std::size_t DFA_STATE_COUNT = 5;
+    size_t spatial_cell_count = 0;
+    static constexpr size_t DFA_STATE_COUNT = 5;
 
     DeterministicFiniteAutomaton specification_dfa;
     ArenaRegions arena_regions;
 
-    // Precomputed spatial cell observation labels
-    std::vector<ObservationSymbol> cell_observation_labels;
+    // region label (free, R1, R2, R3, R4) for each grid cell
+    vector<ObservationSymbol> cell_observation_labels;
 
-    // Construct product automaton and precompute cell labels from spatial partition
+    // build product automaton and classify each grid cell into its region
     ProductAutomaton(
-        std::size_t total_spatial_cells,
-        const grid::GridPartition& partition,
+        size_t total_spatial_cells,
+        const GridPartition& partition,
         const ArenaRegions& regions = ArenaRegions());
 
-    // Returns total product states: |S| x |Q|
-    [[nodiscard]] std::size_t total_product_states() const noexcept;
+    // total states: spatial_cells * 5 DFA states
+    [[nodiscard]] size_t total_product_states() const noexcept;
 
-    // Encodes spatial cell index and DFA state into a flat 1D product state index
-    [[nodiscard]] std::size_t encode_product_index(
-        std::size_t spatial_cell_index,
+    // pack (cell, dfa_state) into a 1D index: (q - 1) * total_cells + cell
+    [[nodiscard]] size_t encode_product_index(
+        size_t spatial_cell_index,
         AutomatonState automaton_state) const noexcept;
 
-    // Decodes a flat 1D product state index into spatial cell index and DFA state
+    // unpack a 1D product index back into (cell, dfa_state)
     [[nodiscard]] ProductState decode_product_index(
-        std::size_t product_index) const noexcept;
+        size_t product_index) const noexcept;
 
-    // Retrieves precomputed observation symbol for a spatial cell
+    // read region label for a cell
     [[nodiscard]] ObservationSymbol get_cell_observation(
-        std::size_t spatial_cell_index) const noexcept;
+        size_t spatial_cell_index) const noexcept;
 
-    // Determines observation symbol for continuous coordinates (x, y)
+    // check which region contains point (x, y)
     [[nodiscard]] ObservationSymbol evaluate_point_observation(
         double x_coordinate,
         double y_coordinate) const noexcept;
 
-    // Returns set of all product states whose DFA component is accepting
-    [[nodiscard]] std::unordered_set<std::size_t> compute_target_product_states() const;
+    // find all product states that have reached the goal (q4)
+    [[nodiscard]] unordered_set<size_t> compute_target_product_states() const;
 
-    // Returns set of all product states whose DFA component is a sink trap
-    [[nodiscard]] std::unordered_set<std::size_t> compute_sink_product_states() const;
+    // find all product states that are in the sink trap (q5)
+    [[nodiscard]] unordered_set<size_t> compute_sink_product_states() const;
 
 private:
-    // Precomputes observation label for each grid cell box
-    void precompute_cell_labels(const grid::GridPartition& partition);
+    // precompute region labels for all grid cells
+    void precompute_cell_labels(const GridPartition& partition);
 };
 
 } // namespace symbolic::automaton
 
+namespace symbolic {
+    using automaton::ArenaRegions;
+    using automaton::ProductState;
+    using automaton::ProductAutomaton;
+}

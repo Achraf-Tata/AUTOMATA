@@ -2,33 +2,38 @@
 
 namespace symbolic::abstraction {
 
-// Allocates the 2D transition table of successor lists
-TransitionSystem::TransitionSystem(std::size_t total_states, std::size_t total_inputs)
+using namespace std;
+using namespace domain;
+using namespace grid;
+using namespace model;
+
+// allocate 2D transition table: state_count x input_count
+TransitionSystem::TransitionSystem(size_t total_states, size_t total_inputs)
     : state_count(total_states), input_count(total_inputs)
 {
-    transition_table.resize(state_count, std::vector<std::vector<std::size_t>>(input_count));
+    transition_table.resize(state_count, vector<vector<size_t>>(input_count));
 }
 
-// Builds the transition relation by computing reachable boxes for each cell and control
+// compute abstraction: for each cell and control action, find all reachable next cells
 void TransitionSystem::build_abstraction(
-    const grid::GridPartition& partition,
-    const model::UnicycleModel& model,
-    const std::function<void(std::size_t, std::size_t)>& progress_callback)
+    const GridPartition& partition,
+    const UnicycleModel& model,
+    const function<void(size_t, size_t)>& progress_callback)
 {
     state_count = partition.total_cells();
     input_count = model.num_controls();
-    transition_table.assign(state_count, std::vector<std::vector<std::size_t>>(input_count));
+    transition_table.assign(state_count, vector<vector<size_t>>(input_count));
 
-    for (std::size_t source_state_index = 0; source_state_index < state_count; ++source_state_index) {
-        domain::BoundingBox cell_box = partition.get_cell_box(source_state_index);
+    for (size_t source_state_index = 0; source_state_index < state_count; ++source_state_index) {
+        BoundingBox cell_box = partition.get_cell_box(source_state_index);
 
-        for (std::size_t control_index = 0; control_index < input_count; ++control_index) {
+        for (size_t control_index = 0; control_index < input_count; ++control_index) {
             const auto& control_input = model.get_control(control_index);
-            domain::BoundingBox reachable_box = model.compute_reachable_box(cell_box, control_input);
+            BoundingBox reachable_box = model.compute_reachable_box(cell_box, control_input);
 
-            // Over-approximation: find all grid cells that intersect the reachable box
-            std::vector<std::size_t> successor_cells = partition.query_overlapping_cells(reachable_box);
-            transition_table[source_state_index][control_index] = std::move(successor_cells);
+            // over-approximation: all cells touching the reachable box are potential successors
+            vector<size_t> successor_cells = partition.query_overlapping_cells(reachable_box);
+            transition_table[source_state_index][control_index] = move(successor_cells);
         }
 
         if (progress_callback && (source_state_index % 2000 == 0 || source_state_index == state_count - 1)) {
@@ -37,14 +42,14 @@ void TransitionSystem::build_abstraction(
     }
 }
 
-// Returns the list of post successor states for a given state and control
-const std::vector<std::size_t>& TransitionSystem::get_successors(std::size_t state_index, std::size_t control_index) const {
+// return the list of reachable next cells from a given state and control
+const vector<size_t>& TransitionSystem::get_successors(size_t state_index, size_t control_index) const {
     return transition_table[state_index][control_index];
 }
 
-// Computes the total number of transitions in the graph
-std::size_t TransitionSystem::total_transitions() const noexcept {
-    std::size_t count = 0;
+// count total number of directed edges in the transition system
+size_t TransitionSystem::total_transitions() const noexcept {
+    size_t count = 0;
     for (const auto& state_entry : transition_table) {
         for (const auto& successor_list : state_entry) {
             count += successor_list.size();
@@ -53,8 +58,8 @@ std::size_t TransitionSystem::total_transitions() const noexcept {
     return count;
 }
 
-// Checks if state index is valid
-bool TransitionSystem::is_valid_state(std::size_t state_index) const noexcept {
+// check if a cell index is valid
+bool TransitionSystem::is_valid_state(size_t state_index) const noexcept {
     return state_index < state_count;
 }
 

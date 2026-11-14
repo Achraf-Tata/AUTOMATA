@@ -3,11 +3,14 @@
 
 namespace symbolic::model {
 
+using namespace std;
+using namespace domain;
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
-// Sets sampling period and disturbance bounds, then generates discrete control set
+// initialize sampling period dt and noise bounds, then build discrete control list
 UnicycleModel::UnicycleModel(double initial_sampling_period, double initial_disturbance_bound)
     : sampling_period_seconds(initial_sampling_period),
       disturbance_bounds{initial_disturbance_bound, initial_disturbance_bound, initial_disturbance_bound}
@@ -15,7 +18,7 @@ UnicycleModel::UnicycleModel(double initial_sampling_period, double initial_dist
     initialize_discrete_controls();
 }
 
-// Discretizes velocity and steering rate combinations
+// create the discrete set of (v, w) controls: 3 velocities x 5 steering rates = 15 pairs
 void UnicycleModel::initialize_discrete_controls() {
     discrete_controls.clear();
     const double velocities[] = { 0.25, 0.50, 0.75 };
@@ -28,24 +31,24 @@ void UnicycleModel::initialize_discrete_controls() {
     }
 }
 
-// Returns the number of discrete controls
-std::size_t UnicycleModel::num_controls() const noexcept {
+// total number of available discrete controls (15)
+size_t UnicycleModel::num_controls() const noexcept {
     return discrete_controls.size();
 }
 
-// Returns control action by index
-const Control& UnicycleModel::get_control(std::size_t control_index) const {
+// get control pair (v, w) by index
+const Control& UnicycleModel::get_control(size_t control_index) const {
     return discrete_controls.at(control_index);
 }
 
-// Integrates kinematics by one step with additive disturbance
+// simulate one discrete time-step forward using unicycle kinematics plus noise
 State UnicycleModel::step_exact(const State& current_state,
                                const Control& control_input,
-                               const std::array<double, 3>& disturbance_vector) const noexcept
+                               const array<double, 3>& disturbance_vector) const noexcept
 {
     double time_step = sampling_period_seconds;
-    double next_x = current_state.x_position + time_step * (control_input.linear_velocity * std::cos(current_state.heading_angle) + disturbance_vector[0]);
-    double next_y = current_state.y_position + time_step * (control_input.linear_velocity * std::sin(current_state.heading_angle) + disturbance_vector[1]);
+    double next_x = current_state.x_position + time_step * (control_input.linear_velocity * cos(current_state.heading_angle) + disturbance_vector[0]);
+    double next_y = current_state.y_position + time_step * (control_input.linear_velocity * sin(current_state.heading_angle) + disturbance_vector[1]);
     double next_theta = current_state.heading_angle + time_step * (control_input.angular_velocity + disturbance_vector[2]);
 
     while (next_theta > M_PI)  next_theta -= 2.0 * M_PI;
@@ -54,29 +57,47 @@ State UnicycleModel::step_exact(const State& current_state,
     return { next_x, next_y, next_theta };
 }
 
-// Computes axis-aligned bounding box enclosing all reachable states from a cell
-domain::BoundingBox UnicycleModel::compute_reachable_box(const domain::BoundingBox& cell_box,
-                                                        const Control& control_input) const noexcept
+// compute a bounding box that encloses all points reachable from this cell under control u
+BoundingBox UnicycleModel::compute_reachable_box(const BoundingBox& cell_box,
+                                                const Control& control_input) const noexcept
 {
     double time_step = sampling_period_seconds;
+    double noise_bound = disturbance_bounds.max_disturbance_x;
 
-    auto cell_center = cell_box.center();
-    auto cell_radii  = cell_box.radii();
+    double th_min = cell_box.theta_range.lower_bound;
+    double th_max = cell_box.theta_range.upper_bound;
 
-    // Nominal center propagation
-    double predicted_center_x = cell_center[0] + time_step * control_input.linear_velocity * std::cos(cell_center[2]);
-    double predicted_center_y = cell_center[1] + time_step * control_input.linear_velocity * std::sin(cell_center[2]);
-    double predicted_center_theta = cell_center[2] + time_step * control_input.angular_velocity;
+    double min_dx = 1e18, max_dx = -1e18;
+    double min_dy = 1e18, max_dy = -1e18;
 
-    // Growth bound over-approximation expansion radii
-    double expansion_radius_x = cell_radii[0] + time_step * std::abs(control_input.linear_velocity) * cell_radii[2] + time_step * disturbance_bounds.max_disturbance_x;
-    double expansion_radius_y = cell_radii[1] + time_step * std::abs(control_input.linear_velocity) * cell_radii[2] + time_step * disturbance_bounds.max_disturbance_y;
-    double expansion_radius_theta = cell_radii[2] + time_step * disturbance_bounds.max_disturbance_theta;
+    const double sample_thetas[7] = {
+        th_min, th_max,
+        0.5 * (th_min + th_max),
+        -M_PI * 0.5, 0.0, M_PI * 0.5, M_PI
+    };
 
-    return domain::BoundingBox(
-        domain::Interval(predicted_center_x - expansion_radius_x, predicted_center_x + expansion_radius_x),
-        domain::Interval(predicted_center_y - expansion_radius_y, predicted_center_y + expansion_radius_y),
-        domain::Interval(predicted_center_theta - expansion_radius_theta, predicted_center_theta + expansion_radius_theta)
+    for (double th : sample_thetas) {
+        if (th < th_min || th > th_max) continue;
+        double dx = time_step * control_input.linear_velocity * cos(th);
+        double dy = time_step * control_input.linear_velocity * sin(th);
+        min_dx = min(min_dx, dx);
+        max_dx = max(max_dx, dx);
+        min_dy = min(min_dy, dy);
+        max_dy = max(max_dy, dy);
+    }
+
+    double next_x_min = cell_box.x_range.lower_bound + min_dx - time_step * noise_bound;
+    double next_x_max = cell_box.x_range.upper_bound + max_dx + time_step * noise_bound;
+    double next_y_min = cell_box.y_range.lower_bound + min_dy - time_step * noise_bound;
+    double next_y_max = cell_box.y_range.upper_bound + max_dy + time_step * noise_bound;
+
+    double next_th_min = th_min + time_step * control_input.angular_velocity - time_step * disturbance_bounds.max_disturbance_theta;
+    double next_th_max = th_max + time_step * control_input.angular_velocity + time_step * disturbance_bounds.max_disturbance_theta;
+
+    return BoundingBox(
+        Interval(next_x_min, next_x_max),
+        Interval(next_y_min, next_y_max),
+        Interval(next_th_min, next_th_max)
     );
 }
 

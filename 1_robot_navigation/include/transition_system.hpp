@@ -8,36 +8,45 @@
 
 namespace symbolic::abstraction {
 
+using namespace std;
+using namespace grid;
+using namespace model;
+
+// discrete transition system representing the abstracted robot dynamics on the grid
 class TransitionSystem {
 public:
-    std::size_t state_count = 0;
-    std::size_t input_count = 0;
+    size_t state_count = 0;
+    size_t input_count = 0;
 
-    // Adjacency table: transition_table[state_index][control_index] = list of post successor state indices
-    std::vector<std::vector<std::vector<std::size_t>>> transition_table;
+    // transition graph table: table[state][control] = list of reachable successor cells
+    vector<vector<vector<size_t>>> transition_table;
 
-    // Default constructor
+    // default constructor
     TransitionSystem() = default;
 
-    // Allocate transition table with given state and control dimensions
-    TransitionSystem(std::size_t total_states, std::size_t total_inputs);
+    // allocate table with given number of states and controls
+    TransitionSystem(size_t total_states, size_t total_inputs);
 
-    // Builds symbolic abstraction transitions by over-approximating each cell's reachability
+    // build the transition graph by propagating each grid cell under all controls
     void build_abstraction(
-        const grid::GridPartition& partition,
-        const model::UnicycleModel& model,
-        const std::function<void(std::size_t, std::size_t)>& progress_callback = nullptr);
+        const GridPartition& partition,
+        const UnicycleModel& model,
+        const function<void(size_t, size_t)>& progress_callback = nullptr);
 
-    // Returns post successor state indices from a state under a control action
-    [[nodiscard]] const std::vector<std::size_t>& get_successors(
-        std::size_t state_index,
-        std::size_t control_index) const;
+    // get list of reachable next cells from a given cell and control action
+    [[nodiscard]] const vector<size_t>& get_successors(
+        size_t state_index,
+        size_t control_index) const;
 
-    // Computes total count of transitions across all states and inputs
-    [[nodiscard]] std::size_t total_transitions() const noexcept;
+    // count total number of edges in the transition graph
+    [[nodiscard]] size_t total_transitions() const noexcept;
 
-    // Validates whether a state index is within bounds
-    [[nodiscard]] bool is_valid_state(std::size_t state_index) const noexcept;
+    // check if a cell state index is within valid bounds
+    [[nodiscard]] bool is_valid_state(size_t state_index) const noexcept;
 };
 
 } // namespace symbolic::abstraction
+
+namespace symbolic {
+    using abstraction::TransitionSystem;
+}

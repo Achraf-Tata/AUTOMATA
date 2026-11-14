@@ -7,7 +7,10 @@
 
 namespace symbolic::automaton {
 
-enum class ObservationSymbol : std::uint8_t {
+using namespace std;
+
+// symbols detected by the robot: free space, waypoints R1/R2, goal R3, obstacle R4
+enum class ObservationSymbol : uint8_t {
     FreeSpace = 0,
     Waypoint1 = 1,
     Waypoint2 = 2,
@@ -15,7 +18,9 @@ enum class ObservationSymbol : std::uint8_t {
     Obstacle  = 4
 };
 
-enum class AutomatonState : std::uint8_t {
+// DFA states for the mission specification:
+// q1 = start, q2 = visited R1, q3 = visited R2, q4 = goal reached (accepting), q5 = sink trap (failed)
+enum class AutomatonState : uint8_t {
     Initial          = 1,
     VisitedWaypoint1 = 2,
     VisitedWaypoint2 = 3,
@@ -23,51 +28,59 @@ enum class AutomatonState : std::uint8_t {
     SinkTrap         = 5
 };
 
+// Deterministic Finite Automaton (DFA) that tracks high-level mission progress
 class DeterministicFiniteAutomaton {
 public:
     AutomatonState initial_state = AutomatonState::Initial;
-    std::unordered_set<AutomatonState> accepting_states;
-    std::unordered_set<AutomatonState> sink_states;
+    unordered_set<AutomatonState> accepting_states;
+    unordered_set<AutomatonState> sink_states;
 
-    // Initializes the 5-state DFA specification with accepting and sink sets
+    // initialize DFA: starts in q1, accepting = {q4}, sink = {q5}
     DeterministicFiniteAutomaton();
 
-    // Evaluates transition delta(q, sigma) given current state and observation symbol
+    // transition function: delta(q, symbol) -> returns next automaton state
     [[nodiscard]] AutomatonState transition(
         AutomatonState current_state,
         ObservationSymbol observation_symbol) const noexcept;
 
-    // Evaluates whether a finite word of observations leads to an accepting state
+    // check if an observation word satisfies the mission (ends in accepting state q4)
     [[nodiscard]] bool accepts_word(
-        const std::vector<ObservationSymbol>& observation_word) const noexcept;
+        const vector<ObservationSymbol>& observation_word) const noexcept;
 
-    // Executes a sequence of observations starting from initial state and returns final state
+    // run a sequence of observations through the DFA from start and return final state
     [[nodiscard]] AutomatonState evaluate_trace(
-        const std::vector<ObservationSymbol>& observation_trace) const noexcept;
+        const vector<ObservationSymbol>& observation_trace) const noexcept;
 
-    // Tests if state is an accepting goal state
+    // check if this is an accepting goal state (q4)
     [[nodiscard]] bool is_accepting_state(AutomatonState state) const noexcept;
 
-    // Tests if state is a permanent trap sink state
+    // check if this is a permanent sink trap state (q5)
     [[nodiscard]] bool is_sink_state(AutomatonState state) const noexcept;
 
-    // Converts DFA state enum to string name
-    [[nodiscard]] static std::string state_to_string(AutomatonState state);
+    // convert state enum to readable text for printing/debugging
+    [[nodiscard]] static string state_to_string(AutomatonState state);
 
-    // Converts observation symbol enum to string name
-    [[nodiscard]] static std::string symbol_to_string(ObservationSymbol symbol);
+    // convert symbol enum to readable text for printing/debugging
+    [[nodiscard]] static string symbol_to_string(ObservationSymbol symbol);
 
 private:
-    // Transition table: [current_state_index - 1][symbol_index] -> next_state
-    static constexpr std::uint8_t STATE_COUNT = 5;
-    static constexpr std::uint8_t SYMBOL_COUNT = 5;
+    // 5x5 lookup table: delta[current_state - 1][symbol]
+    static constexpr uint8_t STATE_COUNT = 5;
+    static constexpr uint8_t SYMBOL_COUNT = 5;
     AutomatonState transition_table[STATE_COUNT][SYMBOL_COUNT]{};
 
     void initialize_transition_table();
 };
 
-// Factory for specification: Visit R1 or R2 exclusively, then R3, avoiding R4
+// create the navigation mission DFA: visit (R1 xor R2), then R3, avoiding R4
 DeterministicFiniteAutomaton create_navigation_specification_dfa();
 
 } // namespace symbolic::automaton
+
+namespace symbolic {
+    using automaton::ObservationSymbol;
+    using automaton::AutomatonState;
+    using automaton::DeterministicFiniteAutomaton;
+    using automaton::create_navigation_specification_dfa;
+}
 
