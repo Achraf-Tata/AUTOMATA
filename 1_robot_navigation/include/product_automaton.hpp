@@ -24,27 +24,27 @@ struct ArenaRegions {
 
 // combined state: (grid_cell, dfa_state)
 struct ProductState {
-    size_t spatial_cell_index = 0;
-    AutomatonState automaton_state = AutomatonState::Initial;
+    size_t s = 0;
+    AutomatonState q = AutomatonState::Initial;
 };
 
 // Combined tracker: pairs each physical grid cell with where we are in the mission
 class ProductAutomaton {
 public:
-    size_t spatial_cell_count = 0;
+    size_t num_cells = 0;
     static constexpr size_t DFA_STATE_COUNT = 5;
 
-    DeterministicFiniteAutomaton specification_dfa;
-    ArenaRegions arena_regions;
+    DeterministicFiniteAutomaton dfa;
+    ArenaRegions regions;
 
     // Region label (free, R1, R2, R3, R4) for each grid cell
-    vector<ObservationSymbol> cell_observation_labels;
+    vector<ObservationSymbol> cell_labels;
 
     // Build the combined tracker and classify each grid cell into its region
     ProductAutomaton(
-        size_t num_cells,
-        const GridPartition& partition,
-        const ArenaRegions& regions = ArenaRegions());
+        size_t n_cells,
+        const GridPartition& grid,
+        const ArenaRegions& regs = ArenaRegions());
 
     // Total combinations: spatial_cells * 5 mission stages
     [[nodiscard]] size_t total_product_states() const noexcept;
@@ -75,7 +75,7 @@ public:
 
 private:
     // Classify all cells in the grid by region
-    void precompute_cell_labels(const GridPartition& partition);
+    void precompute_cell_labels(const GridPartition& grid);
 };
 
 } // namespace symbolic::automaton

@@ -40,37 +40,37 @@ SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
     // Use a fixed seed for reproducible simulation runs
     mt19937 rng(1337);
     uniform_real_distribution<double> noise_dist(
-        -model.disturbance_bounds.max_disturbance_x,
-        model.disturbance_bounds.max_disturbance_x
+        -model.noise_bounds.max_x,
+        model.noise_bounds.max_x
     );
 
     for (size_t step = 0; step < max_steps; ++step) {
         // Check continuous domain bounds
-        if (!grid.state_domain.contains(pose.x_position, pose.y_position, pose.heading_angle)) {
+        if (!grid.domain.contains(pose.x, pose.y, pose.theta)) {
             trace.outcome = OutOfBounds;
             break;
         }
 
-        size_t s = grid.point_to_flat(pose.x_position, pose.y_position, pose.heading_angle);
-        ObservationSymbol obs = automaton.evaluate_point_observation(pose.x_position, pose.y_position);
-        trace.observation_word.push_back(obs);
+        size_t s = grid.point_to_flat(pose.x, pose.y, pose.theta);
+        ObservationSymbol obs = automaton.evaluate_point_observation(pose.x, pose.y);
+        trace.word.push_back(obs);
 
         // Update DFA state: q' = delta(q, sigma)
-        q = automaton.specification_dfa.transition(q, obs);
+        q = automaton.dfa.transition(q, obs);
 
         // Accepting goal reached
         if (q == AutomatonState::GoalReached) {
             trace.outcome = GoalReached;
-            trace.satisfies_specification_language = true;
-            trace.total_steps = step;
+            trace.accepted = true;
+            trace.steps = step;
             return trace;
         }
 
         // Sink trap reached: check whether it was an obstacle or exclusivity violation
         if (q == SinkTrap) {
             trace.outcome = (obs == Obstacle) ? ObstacleCollision : SpecificationViolation;
-            trace.satisfies_specification_language = false;
-            trace.total_steps = step;
+            trace.accepted = false;
+            trace.steps = step;
             return trace;
         }
 
@@ -86,12 +86,12 @@ SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
         Control u = model.get_control(u_idx);
 
         TrajectoryStep rec;
-        rec.continuous_state = pose;
-        rec.spatial_cell_index = s;
-        rec.observation_symbol = obs;
-        rec.automaton_state = q;
-        rec.applied_control = u;
-        trace.recorded_steps.push_back(rec);
+        rec.pose = pose;
+        rec.s    = s;
+        rec.obs  = obs;
+        rec.q    = q;
+        rec.u    = u;
+        trace.history.push_back(rec);
 
         // Add slight random wobble to simulate real-world noise
         array<double, 3> w = {0.0, 0.0, 0.0};
@@ -103,13 +103,12 @@ SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
         pose = model.step_exact(pose, u, w);
     }
 
-    if (trace.outcome == UncontrollableState && trace.recorded_steps.size() >= max_steps) {
+    if (trace.outcome == UncontrollableState && trace.history.size() >= max_steps) {
         trace.outcome = StepLimitReached;
     }
 
-    trace.total_steps = trace.recorded_steps.size();
-    trace.satisfies_specification_language =
-        automaton.specification_dfa.accepts_word(trace.observation_word);
+    trace.steps = trace.history.size();
+    trace.accepted = automaton.dfa.accepts_word(trace.word);
 
     return trace;
 }
@@ -130,29 +129,29 @@ SimulationTrace ClosedLoopSimulator::run_spatial(
 
     mt19937 rng(1337);
     uniform_real_distribution<double> noise_dist(
-        -model.disturbance_bounds.max_disturbance_x,
-        model.disturbance_bounds.max_disturbance_x
+        -model.noise_bounds.max_x,
+        model.noise_bounds.max_x
     );
 
     for (size_t step = 0; step < max_steps; ++step) {
-        if (!grid.state_domain.contains(pose.x_position, pose.y_position, pose.heading_angle)) {
+        if (!grid.domain.contains(pose.x, pose.y, pose.theta)) {
             trace.outcome = OutOfBounds;
             break;
         }
 
-        size_t s = grid.point_to_flat(pose.x_position, pose.y_position, pose.heading_angle);
+        size_t s = grid.point_to_flat(pose.x, pose.y, pose.theta);
 
         if (targets.find(s) != targets.end()) {
             trace.outcome = GoalReached;
-            trace.satisfies_specification_language = true;
-            trace.total_steps = step;
+            trace.accepted = true;
+            trace.steps = step;
             return trace;
         }
 
         if (obstacles.find(s) != obstacles.end()) {
             trace.outcome = ObstacleCollision;
-            trace.satisfies_specification_language = false;
-            trace.total_steps = step;
+            trace.accepted = false;
+            trace.steps = step;
             return trace;
         }
 
@@ -165,10 +164,10 @@ SimulationTrace ClosedLoopSimulator::run_spatial(
         Control u = model.get_control(u_idx);
 
         TrajectoryStep rec;
-        rec.continuous_state = pose;
-        rec.spatial_cell_index = s;
-        rec.applied_control = u;
-        trace.recorded_steps.push_back(rec);
+        rec.pose = pose;
+        rec.s    = s;
+        rec.u    = u;
+        trace.history.push_back(rec);
 
         array<double, 3> w = {0.0, 0.0, 0.0};
         if (apply_noise) {
@@ -178,11 +177,11 @@ SimulationTrace ClosedLoopSimulator::run_spatial(
         pose = model.step_exact(pose, u, w);
     }
 
-    if (trace.outcome == UncontrollableState && trace.recorded_steps.size() >= max_steps) {
+    if (trace.outcome == UncontrollableState && trace.history.size() >= max_steps) {
         trace.outcome = StepLimitReached;
     }
 
-    trace.total_steps = trace.recorded_steps.size();
+    trace.steps = trace.history.size();
     return trace;
 }
 

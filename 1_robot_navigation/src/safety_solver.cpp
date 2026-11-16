@@ -19,8 +19,8 @@ SafetyResult SafetySolver::solve_safety(
     auto t0 = high_resolution_clock::now();
     SafetyResult res;
 
-    size_t num_states = ts.state_count;
-    size_t num_inputs = ts.input_count;
+    size_t num_states = ts.num_states;
+    size_t num_inputs = ts.num_inputs;
 
     // Step 1: Start out assuming all cells outside the obstacles are safe
     vector<bool> safe(num_states, true);
@@ -114,14 +114,14 @@ SafetyResult SafetySolver::solve_safety_product(
     SafetyResult res;
 
     size_t num_prod   = automaton.total_product_states();
-    size_t num_cells  = automaton.spatial_cell_count;
-    size_t num_inputs = ts.input_count;
+    size_t num_cells  = automaton.num_cells;
+    size_t num_inputs = ts.num_inputs;
 
     // Step 1: Start by keeping every state that hasn't failed the mission (not q5)
     vector<bool> safe(num_prod, true);
     for (size_t p = 0; p < num_prod; ++p) {
-        auto decoded = automaton.decode_product_index(p);
-        if (automaton.specification_dfa.is_sink_state(decoded.automaton_state)) {
+        auto dec = automaton.decode_product_index(p);
+        if (automaton.dfa.is_sink_state(dec.q)) {
             safe[p] = false;
         }
     }
@@ -140,9 +140,9 @@ SafetyResult SafetySolver::solve_safety_product(
                 continue;
             }
 
-            auto decoded = automaton.decode_product_index(p);
-            size_t s = decoded.spatial_cell_index;
-            auto q   = decoded.automaton_state;
+            auto dec = automaton.decode_product_index(p);
+            size_t s = dec.s;
+            auto q   = dec.q;
 
             bool found_safe = false;
             for (size_t u = 0; u < num_inputs; ++u) {
@@ -159,7 +159,7 @@ SafetyResult SafetySolver::solve_safety_product(
                     }
 
                     ObservationSymbol obs = automaton.get_cell_observation(succ_s);
-                    auto q_next = automaton.specification_dfa.transition(q, obs);
+                    auto q_next = automaton.dfa.transition(q, obs);
 
                     size_t p_next = automaton.encode_product_index(succ_s, q_next);
                     if (p_next >= num_prod || !safe[p_next]) {

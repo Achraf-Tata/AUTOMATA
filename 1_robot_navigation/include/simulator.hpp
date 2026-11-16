@@ -30,20 +30,20 @@ using enum SimulationOutcome;
 
 // A single step in the robot's recorded journey
 struct TrajectoryStep {
-    State continuous_state;                                  // Continuous pose (x, y, theta)
-    size_t spatial_cell_index = 0;                           // Discretized grid cell index
-    ObservationSymbol observation_symbol = FreeSpace;        // Region label at this point
-    AutomatonState automaton_state = AutomatonState::Initial;// Mission DFA state at this step
-    Control applied_control;                                 // Selected control input (v, omega)
+    State pose;                                // Continuous pose (x, y, theta)
+    size_t s = 0;                              // Discretized grid cell index
+    ObservationSymbol obs = FreeSpace;         // Region label at this point
+    AutomatonState q = AutomatonState::Initial;// Mission DFA state at this step
+    Control u;                                 // Selected control input (v, omega)
 };
 
 // Complete log of a test run: how it ended, the path taken, and the markers visited
 struct SimulationTrace {
     SimulationOutcome outcome = UncontrollableState;
-    bool satisfies_specification_language = false;          // True if the observation word is accepted by the DFA
-    size_t total_steps = 0;                                  // Number of steps executed
-    vector<TrajectoryStep> recorded_steps;                   // Full trajectory log
-    vector<ObservationSymbol> observation_word;              // Sequence of symbols visited by the robot
+    bool accepted = false;                     // True if the observation word is accepted by the DFA
+    size_t steps = 0;                          // Number of steps executed
+    vector<TrajectoryStep> history;            // Full trajectory log
+    vector<ObservationSymbol> word;            // Sequence of symbols visited by the robot
 };
 
 // Simulator to test the robot driving along its chosen moves under real physical movement

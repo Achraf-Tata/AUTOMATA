@@ -21,8 +21,8 @@ SynthesisResult BackwardReachabilitySolver::solve_product(
     auto t0 = high_resolution_clock::now();
 
     const size_t num_prod   = automaton.total_product_states();
-    const size_t num_cells  = automaton.spatial_cell_count;
-    const size_t num_inputs = ts.input_count;
+    const size_t num_cells  = automaton.num_cells;
+    const size_t num_inputs = ts.num_inputs;
 
     SynthesisResult res;
     res.value_function.assign(num_prod, UNREACHABLE_COST);
@@ -59,7 +59,7 @@ SynthesisResult BackwardReachabilitySolver::solve_product(
                     continue;
                 }
 
-                AutomatonState q_adv = automaton.specification_dfa.transition(q, obs);
+                AutomatonState q_adv = automaton.dfa.transition(q, obs);
                 if (q_adv == SinkTrap) {
                     continue;
                 }
@@ -87,7 +87,7 @@ SynthesisResult BackwardReachabilitySolver::solve_product(
 
                     for (size_t succ_s : succs) {
                         ObservationSymbol succ_obs = automaton.get_cell_observation(succ_s);
-                        AutomatonState succ_q = automaton.specification_dfa.transition(q_adv, succ_obs);
+                        AutomatonState succ_q = automaton.dfa.transition(q_adv, succ_obs);
 
                         if (succ_q == SinkTrap) {
                             all_safe = false;
@@ -157,8 +157,8 @@ SynthesisResult BackwardReachabilitySolver::solve_spatial(
 {
     auto t0 = high_resolution_clock::now();
 
-    const size_t num_states = ts.state_count;
-    const size_t num_inputs = ts.input_count;
+    const size_t num_states = ts.num_states;
+    const size_t num_inputs = ts.num_inputs;
 
     SynthesisResult res;
     res.value_function.assign(num_states, UNREACHABLE_COST);

@@ -54,13 +54,13 @@ int main(int argc, char* argv[]) {
     BoundingBox domain(0.0, 10.0, 0.0, 10.0, -M_PI, M_PI);
     GridPartition grid(domain, nx, ny, ntheta);
 
-    cout << "Grid partition: " << grid.cell_count_x << " x "
-                               << grid.cell_count_y << " x "
-                               << grid.cell_count_theta
+    cout << "Grid partition: " << grid.nx << " x "
+                               << grid.ny << " x "
+                               << grid.ntheta
                                << " (" << grid.total_cells() << " cells)\n";
-    cout << "Cell resolution: dx = " << fixed << setprecision(3) << grid.cell_width_x
-         << " m, dy = " << grid.cell_width_y
-         << " m, dtheta = " << grid.cell_width_theta << " rad\n";
+    cout << "Cell resolution: dx = " << fixed << setprecision(3) << grid.dx
+         << " m, dy = " << grid.dy
+         << " m, dtheta = " << grid.dtheta << " rad\n";
 
     // Step 2: Mission DFA specification: visit either Waypoint R1 or Waypoint R2, then Goal R3, avoiding Obstacle R4
     auto dfa = create_navigation_specification_dfa();
@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
         true
     );
 
-    cout << "Simulation: " << trace.total_steps << " steps, outcome = ";
+    cout << "Simulation: " << trace.steps << " steps, outcome = ";
     switch (trace.outcome) {
         case GoalReached:
             cout << "GoalReached";
@@ -164,7 +164,7 @@ int main(int argc, char* argv[]) {
             cout << "StepLimitReached";
             break;
     }
-    cout << ", language_satisfied = " << (trace.satisfies_specification_language ? "true" : "false") << "\n";
+    cout << ", language_satisfied = " << (trace.accepted ? "true" : "false") << "\n";
 
     return 0;
 }
