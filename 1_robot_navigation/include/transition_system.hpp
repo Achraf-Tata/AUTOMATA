@@ -12,37 +12,37 @@ using namespace std;
 using namespace grid;
 using namespace model;
 
-// discrete transition system representing the abstracted robot dynamics on the grid
+// Map of all possible moves: tells us which cells the robot might land in after each move
 class TransitionSystem {
 public:
     size_t state_count = 0;
     size_t input_count = 0;
 
-    // transition graph table: table[state][control] = list of reachable successor cells
+    // Lookup table: table[cell][move] = list of possible next cells the robot could land in
     vector<vector<vector<size_t>>> transition_table;
 
-    // default constructor
+    // Default constructor
     TransitionSystem() = default;
 
-    // allocate table with given number of states and controls
-    TransitionSystem(size_t total_states, size_t total_inputs);
+    // Allocate table with given number of states and controls
+    TransitionSystem(size_t num_states, size_t num_inputs);
 
-    // build the transition graph by propagating each grid cell under all controls
+    // Builds the move map by testing every move from every grid cell using the robot equations
     void build_abstraction(
-        const GridPartition& partition,
+        const GridPartition& grid,
         const UnicycleModel& model,
-        const function<void(size_t, size_t)>& progress_callback = nullptr);
+        const function<void(size_t, size_t)>& callback = nullptr);
 
-    // get list of reachable next cells from a given cell and control action
+    // Get the list of cells the robot might end up in after taking this move
     [[nodiscard]] const vector<size_t>& get_successors(
-        size_t state_index,
-        size_t control_index) const;
+        size_t s,
+        size_t u) const;
 
-    // count total number of edges in the transition graph
+    // Total number of possible connections across the whole map
     [[nodiscard]] size_t total_transitions() const noexcept;
 
-    // check if a cell state index is within valid bounds
-    [[nodiscard]] bool is_valid_state(size_t state_index) const noexcept;
+    // Check if a cell state index is within valid bounds
+    [[nodiscard]] bool is_valid_state(size_t s) const noexcept;
 };
 
 } // namespace symbolic::abstraction

@@ -14,221 +14,176 @@ using enum ObservationSymbol;
 using AutomatonState::Initial;
 using AutomatonState::SinkTrap;
 
-// Simulates the robot executing the synthesized feedback policy on the product automaton.
-// At each discrete time step (dt = 1.0 s):
-// 1. Boundary check: ensure robot (x, y, theta) is within continuous state domain.
-// 2. Quantization & observation: map continuous coordinates to cell index and lookup region label.
-// 3. DFA state update: transition current DFA state to next state delta(q, sigma).
-//    - If goal reached (q4), simulation ends with success!
-//    - If sink trap reached (q5), simulation ends with obstacle collision or exclusivity violation.
-// 4. Policy lookup: find the optimal control input u from feedback_policy[product_index(cell, q')].
-// 5. Kinematic integration: calculate exact continuous motion x(k+1) = f(x(k), u(k)) + w(k)
-//    with bounded uniform disturbance w in [-max_disturbance, max_disturbance].
-// 6. Record step into trajectory log.
+// Simulates the robot driving in real-time using our computed move lookup table.
+// Every 1 second:
+// 1. Check bounds: make sure the robot is still inside the playground area.
+// 2. Locate: find which grid box the robot is in and check what zone it just hit.
+// 3. Update stage: update our mission progress.
+//    - If we hit the goal (q4), celebrate victory!
+//    - If we hit the trap state (q5), we crashed or broke a mission rule.
+// 4. Choose move: look up the best steering action from our table.
+// 5. Move robot: update position using the wheel equations, plus a little random wobble.
+// 6. Save step: record the move and position into our trip log.
 SimulationTrace ClosedLoopSimulator::run_product_closed_loop(
-    const State& initial_state,
-    const GridPartition& partition,
+    const State& x0,
+    const GridPartition& grid,
     const UnicycleModel& model,
-    const ProductAutomaton& product_automaton,
-    const SynthesisResult& synthesis_result,
-    size_t maximum_steps,
-    bool apply_bounded_disturbances)
+    const ProductAutomaton& automaton,
+    const SynthesisResult& result,
+    size_t max_steps,
+    bool apply_noise)
 {
-    SimulationTrace simulation_trace;
-    State current_continuous_state = initial_state;
-    AutomatonState current_automaton_state = Initial;
+    SimulationTrace trace;
+    State pose = x0;
+    AutomatonState q = Initial;
 
     // Use a fixed seed for reproducible simulation runs
-    mt19937 random_generator(1337);
-    uniform_real_distribution<double> disturbance_distribution(
+    mt19937 rng(1337);
+    uniform_real_distribution<double> noise_dist(
         -model.disturbance_bounds.max_disturbance_x,
         model.disturbance_bounds.max_disturbance_x
     );
 
-    for (size_t step_index = 0; step_index < maximum_steps; ++step_index) {
+    for (size_t step = 0; step < max_steps; ++step) {
         // Check continuous domain bounds
-        if (!partition.state_domain.contains(
-                current_continuous_state.x_position,
-                current_continuous_state.y_position,
-                current_continuous_state.heading_angle))
-        {
-            simulation_trace.outcome = OutOfBounds;
+        if (!grid.state_domain.contains(pose.x_position, pose.y_position, pose.heading_angle)) {
+            trace.outcome = OutOfBounds;
             break;
         }
 
-        size_t current_cell_index = partition.point_to_flat(
-            current_continuous_state.x_position,
-            current_continuous_state.y_position,
-            current_continuous_state.heading_angle
-        );
-
-        ObservationSymbol current_observation = product_automaton.evaluate_point_observation(
-            current_continuous_state.x_position,
-            current_continuous_state.y_position
-        );
-        simulation_trace.observation_word.push_back(current_observation);
+        size_t s = grid.point_to_flat(pose.x_position, pose.y_position, pose.heading_angle);
+        ObservationSymbol obs = automaton.evaluate_point_observation(pose.x_position, pose.y_position);
+        trace.observation_word.push_back(obs);
 
         // Update DFA state: q' = delta(q, sigma)
-        current_automaton_state = product_automaton.specification_dfa.transition(
-            current_automaton_state, current_observation);
+        q = automaton.specification_dfa.transition(q, obs);
 
         // Accepting goal reached
-        if (current_automaton_state == AutomatonState::GoalReached) {
-            simulation_trace.outcome = GoalReached;
-            simulation_trace.satisfies_specification_language = true;
-            simulation_trace.total_steps = step_index;
-            return simulation_trace;
+        if (q == AutomatonState::GoalReached) {
+            trace.outcome = GoalReached;
+            trace.satisfies_specification_language = true;
+            trace.total_steps = step;
+            return trace;
         }
 
         // Sink trap reached: check whether it was an obstacle or exclusivity violation
-        if (current_automaton_state == SinkTrap) {
-            if (current_observation == Obstacle) {
-                simulation_trace.outcome = ObstacleCollision;
-            } else {
-                simulation_trace.outcome = SpecificationViolation;
-            }
-            simulation_trace.satisfies_specification_language = false;
-            simulation_trace.total_steps = step_index;
-            return simulation_trace;
+        if (q == SinkTrap) {
+            trace.outcome = (obs == Obstacle) ? ObstacleCollision : SpecificationViolation;
+            trace.satisfies_specification_language = false;
+            trace.total_steps = step;
+            return trace;
         }
 
-        // Look up the feedback control in the synthesized product policy table
-        size_t current_product_index = product_automaton.encode_product_index(
-            current_cell_index, current_automaton_state);
+        // Look up which steering action to take from our table for this grid box and mission stage
+        size_t p = automaton.encode_product_index(s, q);
 
-        if (current_product_index >= synthesis_result.feedback_policy.size() ||
-            !synthesis_result.feedback_policy[current_product_index].has_value())
-        {
-            simulation_trace.outcome = UncontrollableState;
+        if (p >= result.feedback_policy.size() || !result.feedback_policy[p].has_value()) {
+            trace.outcome = UncontrollableState;
             break;
         }
 
-        size_t optimal_control_index = synthesis_result.feedback_policy[current_product_index].value();
-        Control optimal_control = model.get_control(optimal_control_index);
+        size_t u_idx = result.feedback_policy[p].value();
+        Control u = model.get_control(u_idx);
 
-        TrajectoryStep recorded_step;
-        recorded_step.continuous_state = current_continuous_state;
-        recorded_step.spatial_cell_index = current_cell_index;
-        recorded_step.observation_symbol = current_observation;
-        recorded_step.automaton_state = current_automaton_state;
-        recorded_step.applied_control = optimal_control;
-        simulation_trace.recorded_steps.push_back(recorded_step);
+        TrajectoryStep rec;
+        rec.continuous_state = pose;
+        rec.spatial_cell_index = s;
+        rec.observation_symbol = obs;
+        rec.automaton_state = q;
+        rec.applied_control = u;
+        trace.recorded_steps.push_back(rec);
 
-        // Apply bounded disturbance vector if requested
-        array<double, 3> disturbance_vector = {0.0, 0.0, 0.0};
-        if (apply_bounded_disturbances) {
-            disturbance_vector = {
-                disturbance_distribution(random_generator),
-                disturbance_distribution(random_generator),
-                disturbance_distribution(random_generator)
-            };
+        // Add slight random wobble to simulate real-world noise
+        array<double, 3> w = {0.0, 0.0, 0.0};
+        if (apply_noise) {
+            w = { noise_dist(rng), noise_dist(rng), noise_dist(rng) };
         }
 
-        // Forward integration of continuous unicycle dynamics: x(k+1) = f(x(k), u(k)) + w(k)
-        current_continuous_state = model.step_exact(
-            current_continuous_state, optimal_control, disturbance_vector);
+        // Move the robot forward using the unicycle motion formula with noise
+        pose = model.step_exact(pose, u, w);
     }
 
-    if (simulation_trace.outcome == UncontrollableState &&
-        simulation_trace.recorded_steps.size() >= maximum_steps)
-    {
-        simulation_trace.outcome = StepLimitReached;
+    if (trace.outcome == UncontrollableState && trace.recorded_steps.size() >= max_steps) {
+        trace.outcome = StepLimitReached;
     }
 
-    simulation_trace.total_steps = simulation_trace.recorded_steps.size();
-    simulation_trace.satisfies_specification_language =
-        product_automaton.specification_dfa.accepts_word(simulation_trace.observation_word);
+    trace.total_steps = trace.recorded_steps.size();
+    trace.satisfies_specification_language =
+        automaton.specification_dfa.accepts_word(trace.observation_word);
 
-    return simulation_trace;
+    return trace;
 }
 
-// Simulates unicycle under a baseline spatial reachability feedback policy (without DFA)
+// Drives the robot straight toward the goal without mission stages, just dodging obstacles
 SimulationTrace ClosedLoopSimulator::run_spatial(
-    const State& initial_state,
-    const GridPartition& partition,
+    const State& x0,
+    const GridPartition& grid,
     const UnicycleModel& model,
-    const SynthesisResult& synthesis_result,
-    const unordered_set<size_t>& target_state_indices,
-    const unordered_set<size_t>& obstacle_state_indices,
-    size_t maximum_steps,
-    bool apply_bounded_disturbances)
+    const SynthesisResult& result,
+    const unordered_set<size_t>& targets,
+    const unordered_set<size_t>& obstacles,
+    size_t max_steps,
+    bool apply_noise)
 {
-    SimulationTrace simulation_trace;
-    State current_continuous_state = initial_state;
+    SimulationTrace trace;
+    State pose = x0;
 
-    mt19937 random_generator(1337);
-    uniform_real_distribution<double> disturbance_distribution(
+    mt19937 rng(1337);
+    uniform_real_distribution<double> noise_dist(
         -model.disturbance_bounds.max_disturbance_x,
         model.disturbance_bounds.max_disturbance_x
     );
 
-    for (size_t step_index = 0; step_index < maximum_steps; ++step_index) {
-        if (!partition.state_domain.contains(
-                current_continuous_state.x_position,
-                current_continuous_state.y_position,
-                current_continuous_state.heading_angle))
-        {
-            simulation_trace.outcome = OutOfBounds;
+    for (size_t step = 0; step < max_steps; ++step) {
+        if (!grid.state_domain.contains(pose.x_position, pose.y_position, pose.heading_angle)) {
+            trace.outcome = OutOfBounds;
             break;
         }
 
-        size_t current_cell_index = partition.point_to_flat(
-            current_continuous_state.x_position,
-            current_continuous_state.y_position,
-            current_continuous_state.heading_angle
-        );
+        size_t s = grid.point_to_flat(pose.x_position, pose.y_position, pose.heading_angle);
 
-        if (target_state_indices.find(current_cell_index) != target_state_indices.end()) {
-            simulation_trace.outcome = GoalReached;
-            simulation_trace.satisfies_specification_language = true;
-            simulation_trace.total_steps = step_index;
-            return simulation_trace;
+        if (targets.find(s) != targets.end()) {
+            trace.outcome = GoalReached;
+            trace.satisfies_specification_language = true;
+            trace.total_steps = step;
+            return trace;
         }
 
-        if (obstacle_state_indices.find(current_cell_index) != obstacle_state_indices.end()) {
-            simulation_trace.outcome = ObstacleCollision;
-            simulation_trace.satisfies_specification_language = false;
-            simulation_trace.total_steps = step_index;
-            return simulation_trace;
+        if (obstacles.find(s) != obstacles.end()) {
+            trace.outcome = ObstacleCollision;
+            trace.satisfies_specification_language = false;
+            trace.total_steps = step;
+            return trace;
         }
 
-        if (current_cell_index >= synthesis_result.feedback_policy.size() ||
-            !synthesis_result.feedback_policy[current_cell_index].has_value())
-        {
-            simulation_trace.outcome = UncontrollableState;
+        if (s >= result.feedback_policy.size() || !result.feedback_policy[s].has_value()) {
+            trace.outcome = UncontrollableState;
             break;
         }
 
-        size_t optimal_control_index = synthesis_result.feedback_policy[current_cell_index].value();
-        Control optimal_control = model.get_control(optimal_control_index);
+        size_t u_idx = result.feedback_policy[s].value();
+        Control u = model.get_control(u_idx);
 
-        TrajectoryStep recorded_step;
-        recorded_step.continuous_state = current_continuous_state;
-        recorded_step.spatial_cell_index = current_cell_index;
-        recorded_step.applied_control = optimal_control;
-        simulation_trace.recorded_steps.push_back(recorded_step);
+        TrajectoryStep rec;
+        rec.continuous_state = pose;
+        rec.spatial_cell_index = s;
+        rec.applied_control = u;
+        trace.recorded_steps.push_back(rec);
 
-        array<double, 3> disturbance_vector = {0.0, 0.0, 0.0};
-        if (apply_bounded_disturbances) {
-            disturbance_vector = {
-                disturbance_distribution(random_generator),
-                disturbance_distribution(random_generator),
-                disturbance_distribution(random_generator)
-            };
+        array<double, 3> w = {0.0, 0.0, 0.0};
+        if (apply_noise) {
+            w = { noise_dist(rng), noise_dist(rng), noise_dist(rng) };
         }
 
-        current_continuous_state = model.step_exact(
-            current_continuous_state, optimal_control, disturbance_vector);
+        pose = model.step_exact(pose, u, w);
     }
 
-    if (simulation_trace.outcome == UncontrollableState &&
-        simulation_trace.recorded_steps.size() >= maximum_steps)
-    {
-        simulation_trace.outcome = StepLimitReached;
+    if (trace.outcome == UncontrollableState && trace.recorded_steps.size() >= max_steps) {
+        trace.outcome = StepLimitReached;
     }
 
-    simulation_trace.total_steps = simulation_trace.recorded_steps.size();
-    return simulation_trace;
+    trace.total_steps = trace.recorded_steps.size();
+    return trace;
 }
 
 } // namespace symbolic::simulation

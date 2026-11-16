@@ -95,12 +95,12 @@ int flat_index(const GridCoord& grid_coordinate) noexcept;
 // 1 = Free space
 int get_region_label(double x, double y, const RegionConfig& config) noexcept;
 
-// 1D coordinate successor lookup tables based on Antoine Girard's decomposition.
-// Because unicycle dynamics decouple along coordinate axes, the reachable box
-// under control u = (v, omega) can be projected into 1D interval bounds:
-//   X-axis successor range: [c1_min, c1_max]
-//   Y-axis successor range: [c2_min, c2_max]
-//   Theta-axis successor range: [c3_min, c3_max]
+// Precomputed range tables using the coordinate trick from Antoine Girard's paper.
+// Because the robot's motion equations can be split across X, Y, and angle theta,
+// we can calculate the possible next boxes along each dimension independently:
+//   X-axis possible range: [c1_min, c1_max]
+//   Y-axis possible range: [c2_min, c2_max]
+//   Theta-axis possible range: [c3_min, c3_max]
 struct AbstractionTables {
     vector<int>     c1_min;
     vector<int>     c1_max;

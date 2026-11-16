@@ -17,18 +17,18 @@ using namespace automaton;
 using namespace synthesis;
 using enum ObservationSymbol;
 
-// Possible terminal outcomes for a closed-loop simulation run
+// Possible ways a test run can end
 enum class SimulationOutcome {
     GoalReached,            // Reached accepting DFA state (q4)
     ObstacleCollision,      // Entered the unsafe obstacle region
     SpecificationViolation, // Violated the temporal mission (e.g. visited both R1 and R2, transitioning to q5)
     OutOfBounds,            // Wandered outside the continuous bounding box domain
-    UncontrollableState,     // Reached a state where no valid control action exists in the feedback policy
+    UncontrollableState,     // Reached a cell where we don't have a computed move
     StepLimitReached        // Exceeded maximum allowable steps before reaching a terminal condition
 };
 using enum SimulationOutcome;
 
-// Snapshot of a single discrete time step in the robot's trajectory
+// A single step in the robot's recorded journey
 struct TrajectoryStep {
     State continuous_state;                                  // Continuous pose (x, y, theta)
     size_t spatial_cell_index = 0;                           // Discretized grid cell index
@@ -37,7 +37,7 @@ struct TrajectoryStep {
     Control applied_control;                                 // Selected control input (v, omega)
 };
 
-// Complete simulation record containing outcome, recorded path, and observation trace
+// Complete log of a test run: how it ended, the path taken, and the markers visited
 struct SimulationTrace {
     SimulationOutcome outcome = UncontrollableState;
     bool satisfies_specification_language = false;          // True if the observation word is accepted by the DFA
@@ -46,38 +46,38 @@ struct SimulationTrace {
     vector<ObservationSymbol> observation_word;              // Sequence of symbols visited by the robot
 };
 
-// Closed-loop simulation engine for testing synthesized controllers on continuous unicycle dynamics
+// Simulator to test the robot driving along its chosen moves under real physical movement
 class ClosedLoopSimulator {
 public:
     ClosedLoopSimulator() = default;
 
-    // Runs a closed-loop simulation using the product automaton feedback policy (S x Q).
-    // At each time step:
-    // 1. Checks if continuous state is within domain bounds.
-    // 2. Quantizes continuous state to cell index and observes region label.
-    // 3. Updates DFA state: q' = delta(q, sigma).
-    // 4. Looks up control u = policy(cell, q').
-    // 5. Steps unicycle continuous kinematics with bounded random disturbance.
-    // 6. Continues until goal is reached, collision occurs, or step limit is hit.
+    // Simulates the robot driving in real-time using our move lookup table.
+    // At each tick:
+    // 1. Checks if the robot is still inside the playground area.
+    // 2. Figures out which grid box the robot is in and sees what zone it's touching.
+    // 3. Updates the mission stage tracker based on what was just visited.
+    // 4. Looks up what steering move the robot should take from this box and stage.
+    // 5. Moves the robot forward with its physical wheels, adding slight real-world wobble.
+    // 6. Keeps going until the robot wins, hits an obstacle, or runs out of steps.
     [[nodiscard]] SimulationTrace run_product_closed_loop(
-        const State& initial_state,
-        const GridPartition& partition,
+        const State& x0,
+        const GridPartition& grid,
         const UnicycleModel& model,
-        const ProductAutomaton& product_automaton,
-        const SynthesisResult& synthesis_result,
-        size_t maximum_steps = 100,
-        bool apply_bounded_disturbances = true);
+        const ProductAutomaton& automaton,
+        const SynthesisResult& result,
+        size_t max_steps = 100,
+        bool apply_noise = true);
 
-    // Runs a baseline spatial feedback simulation (pure reach-avoid without DFA tracking)
+    // Simple direct test run: drive to the target boxes while steering clear of obstacle boxes
     [[nodiscard]] SimulationTrace run_spatial(
-        const State& initial_state,
-        const GridPartition& partition,
+        const State& x0,
+        const GridPartition& grid,
         const UnicycleModel& model,
-        const SynthesisResult& synthesis_result,
-        const unordered_set<size_t>& target_state_indices,
-        const unordered_set<size_t>& obstacle_state_indices,
-        size_t maximum_steps = 100,
-        bool apply_bounded_disturbances = true);
+        const SynthesisResult& result,
+        const unordered_set<size_t>& targets,
+        const unordered_set<size_t>& obstacles,
+        size_t max_steps = 100,
+        bool apply_noise = true);
 };
 
 } // namespace symbolic::simulation

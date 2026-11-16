@@ -12,241 +12,220 @@ using namespace automaton;
 using enum AutomatonState;
 using enum ObservationSymbol;
 
-// backward reachability algorithm on product automaton (position x DFA state)
+// Works backward from the goal on the combined tracking graph (cell position x mission stage)
 SynthesisResult BackwardReachabilitySolver::solve_product(
-    const TransitionSystem& transition_system,
-    const ProductAutomaton& product_automaton,
-    size_t maximum_iterations)
+    const TransitionSystem& ts,
+    const ProductAutomaton& automaton,
+    size_t max_iters)
 {
-    auto start_timestamp = high_resolution_clock::now();
+    auto t0 = high_resolution_clock::now();
 
-    const size_t total_product_states = product_automaton.total_product_states();
-    const size_t total_spatial_cells  = product_automaton.spatial_cell_count;
-    const size_t total_control_inputs = transition_system.input_count;
+    const size_t num_prod   = automaton.total_product_states();
+    const size_t num_cells  = automaton.spatial_cell_count;
+    const size_t num_inputs = ts.input_count;
 
-    SynthesisResult synthesis_result;
-    synthesis_result.value_function.assign(total_product_states, UNREACHABLE_COST);
-    synthesis_result.feedback_policy.assign(total_product_states, nullopt);
+    SynthesisResult res;
+    res.value_function.assign(num_prod, UNREACHABLE_COST);
+    res.feedback_policy.assign(num_prod, nullopt);
 
-    // base step: all states where DFA is in goal state (q4) have cost = 0
-    for (size_t spatial_cell_index = 0; spatial_cell_index < total_spatial_cells; ++spatial_cell_index) {
-        size_t target_product_index = product_automaton.encode_product_index(
-            spatial_cell_index, GoalReached);
-        synthesis_result.value_function[target_product_index] = 0.0;
+    // Base case: if we are already at the goal (q4), we need 0 steps
+    for (size_t s = 0; s < num_cells; ++s) {
+        size_t target_idx = automaton.encode_product_index(s, GoalReached);
+        res.value_function[target_idx] = 0.0;
     }
 
-    size_t newly_controlled_states = 0;
+    size_t newly_controlled = 0;
 
-    // fixed-point loop: expand the controllable set backwards until convergence
-    for (size_t iteration = 1; iteration <= maximum_iterations; ++iteration) {
-        newly_controlled_states = 0;
-        vector<double> previous_value_function = synthesis_result.value_function;
+    // Main loop: keep stepping backwards to discover all spots that can reach the goal
+    for (size_t iter = 1; iter <= max_iters; ++iter) {
+        newly_controlled = 0;
+        vector<double> prev_v = res.value_function;
 
-        // iterate backwards through DFA states: q3 (visited R2), q2 (visited R1), then q1 (start)
-        for (int dfa_state_value = 3; dfa_state_value >= 1; --dfa_state_value) {
-            auto current_automaton_state = static_cast<AutomatonState>(dfa_state_value);
+        // Work backwards through mission stages: q3 (did R2), q2 (did R1), then q1 (starting out)
+        for (int q_val = 3; q_val >= 1; --q_val) {
+            auto q = static_cast<AutomatonState>(q_val);
 
-            for (size_t spatial_cell_index = 0; spatial_cell_index < total_spatial_cells; ++spatial_cell_index) {
-                size_t current_product_index = product_automaton.encode_product_index(
-                    spatial_cell_index, current_automaton_state);
+            for (size_t s = 0; s < num_cells; ++s) {
+                size_t p = automaton.encode_product_index(s, q);
 
-                // skip if this state is already controlled
-                if (synthesis_result.value_function[current_product_index] < UNREACHABLE_COST) {
+                // Skip if we already know how to reach the goal from here
+                if (res.value_function[p] < UNREACHABLE_COST) {
                     continue;
                 }
 
-                // obstacle cells are unsafe and cannot be part of the winning set
-                ObservationSymbol current_cell_observation =
-                    product_automaton.get_cell_observation(spatial_cell_index);
-                if (current_cell_observation == Obstacle) {
+                // Obstacle cells are dangerous, so we never want to go there
+                ObservationSymbol obs = automaton.get_cell_observation(s);
+                if (obs == Obstacle) {
                     continue;
                 }
 
-                AutomatonState advanced_automaton_state =
-                    product_automaton.specification_dfa.transition(
-                        current_automaton_state, current_cell_observation);
-
-                if (advanced_automaton_state == SinkTrap) {
+                AutomatonState q_adv = automaton.specification_dfa.transition(q, obs);
+                if (q_adv == SinkTrap) {
                     continue;
                 }
 
-                // if entering this cell advances the DFA (e.g. stepping into R1/R2 or Goal)
-                if (advanced_automaton_state != current_automaton_state) {
-                    size_t advanced_product_index = product_automaton.encode_product_index(
-                        spatial_cell_index, advanced_automaton_state);
-                    if (synthesis_result.value_function[advanced_product_index] < UNREACHABLE_COST) {
-                        synthesis_result.value_function[current_product_index] = static_cast<double>(iteration);
-                        synthesis_result.feedback_policy[current_product_index] = synthesis_result.feedback_policy[advanced_product_index];
-                        ++newly_controlled_states;
+                // If stepping into this cell completes the current mission milestone (e.g. hitting R1, R2, or Goal)
+                if (q_adv != q) {
+                    size_t p_adv = automaton.encode_product_index(s, q_adv);
+                    if (res.value_function[p_adv] < UNREACHABLE_COST) {
+                        res.value_function[p] = static_cast<double>(iter);
+                        res.feedback_policy[p] = res.feedback_policy[p_adv];
+                        ++newly_controlled;
                         continue;
                     }
                 }
 
-                // test all discrete control inputs (v, w)
-                for (size_t control_index = 0; control_index < total_control_inputs; ++control_index) {
-                    const auto& successor_spatial_cells = transition_system.get_successors(
-                        spatial_cell_index, control_index);
-
-                    if (successor_spatial_cells.empty()) {
+                // Check every possible move the robot could take (speed and turn)
+                for (size_t u = 0; u < num_inputs; ++u) {
+                    const auto& succs = ts.get_successors(s, u);
+                    if (succs.empty()) {
                         continue;
                     }
 
-                    // must guarantee that ALL reachable next cells are in the winning set
-                    bool all_successors_controllable = true;
+                    // We need a guarantee: every possible cell noise could push us into must still lead to the goal
+                    bool all_safe = true;
 
-                    for (size_t successor_cell_index : successor_spatial_cells) {
-                        ObservationSymbol succ_obs =
-                            product_automaton.get_cell_observation(successor_cell_index);
-                        AutomatonState succ_dfa_state =
-                            product_automaton.specification_dfa.transition(
-                                advanced_automaton_state, succ_obs);
+                    for (size_t succ_s : succs) {
+                        ObservationSymbol succ_obs = automaton.get_cell_observation(succ_s);
+                        AutomatonState succ_q = automaton.specification_dfa.transition(q_adv, succ_obs);
 
-                        if (succ_dfa_state == SinkTrap) {
-                            all_successors_controllable = false;
+                        if (succ_q == SinkTrap) {
+                            all_safe = false;
                             break;
                         }
 
-                        size_t successor_product_index = product_automaton.encode_product_index(
-                            successor_cell_index, succ_dfa_state);
-
-                        if (previous_value_function[successor_product_index] >= UNREACHABLE_COST) {
-                            all_successors_controllable = false;
+                        size_t succ_p = automaton.encode_product_index(succ_s, succ_q);
+                        if (prev_v[succ_p] >= UNREACHABLE_COST) {
+                            all_safe = false;
                             break;
                         }
                     }
 
-                    // if all successors are safe and winning, pick this control action
-                    if (all_successors_controllable) {
-                        synthesis_result.value_function[current_product_index] = static_cast<double>(iteration);
-                        synthesis_result.feedback_policy[current_product_index] = control_index;
-                        ++newly_controlled_states;
+                    // If every outcome is safe and on track to win, record this as our chosen move!
+                    if (all_safe) {
+                        res.value_function[p] = static_cast<double>(iter);
+                        res.feedback_policy[p] = u;
+                        ++newly_controlled;
                         break;
                     }
                 }
             }
         }
 
-        synthesis_result.iterations_completed = iteration;
+        res.iterations_completed = iter;
 
         size_t q1_cnt = 0, q2_cnt = 0, q3_cnt = 0, q4_cnt = 0;
-        for (size_t s = 0; s < total_spatial_cells; ++s) {
-            if (synthesis_result.value_function[product_automaton.encode_product_index(s, Initial)] < UNREACHABLE_COST) q1_cnt++;
-            if (synthesis_result.value_function[product_automaton.encode_product_index(s, VisitedWaypoint1)] < UNREACHABLE_COST) q2_cnt++;
-            if (synthesis_result.value_function[product_automaton.encode_product_index(s, VisitedWaypoint2)] < UNREACHABLE_COST) q3_cnt++;
-            if (synthesis_result.value_function[product_automaton.encode_product_index(s, GoalReached)] < UNREACHABLE_COST) q4_cnt++;
+        for (size_t s = 0; s < num_cells; ++s) {
+            if (res.value_function[automaton.encode_product_index(s, Initial)] < UNREACHABLE_COST) q1_cnt++;
+            if (res.value_function[automaton.encode_product_index(s, VisitedWaypoint1)] < UNREACHABLE_COST) q2_cnt++;
+            if (res.value_function[automaton.encode_product_index(s, VisitedWaypoint2)] < UNREACHABLE_COST) q3_cnt++;
+            if (res.value_function[automaton.encode_product_index(s, GoalReached)] < UNREACHABLE_COST) q4_cnt++;
         }
-        cout << "Iteration " << iteration << ": newly controlled = " << newly_controlled_states
+        cout << "Iteration " << iter << ": newly controlled = " << newly_controlled
              << " (q1=" << q1_cnt << ", q2=" << q2_cnt << ", q3=" << q3_cnt << ", q4=" << q4_cnt << ")\n";
 
-        // if no new states became controlled, we reached the fixed-point
-        if (newly_controlled_states == 0) {
-            synthesis_result.has_converged = true;
+        // If we didn't discover any new winning spots this round, we are done!
+        if (newly_controlled == 0) {
+            res.has_converged = true;
             break;
         }
     }
 
-    // count total controllable states
+    // Count how many spots on the map can successfully reach the goal
     size_t total_controllable = 0;
-    for (size_t product_index = 0; product_index < total_product_states; ++product_index) {
-        if (synthesis_result.value_function[product_index] < UNREACHABLE_COST) {
+    for (size_t p = 0; p < num_prod; ++p) {
+        if (res.value_function[p] < UNREACHABLE_COST) {
             ++total_controllable;
         }
     }
 
-    auto end_timestamp = high_resolution_clock::now();
-    synthesis_result.computation_duration_seconds =
-        duration<double>(end_timestamp - start_timestamp).count();
-    synthesis_result.controllable_state_count = total_controllable;
-    synthesis_result.controllable_state_percentage =
-        100.0 * static_cast<double>(total_controllable) / static_cast<double>(total_product_states);
+    auto t1 = high_resolution_clock::now();
+    res.computation_duration_seconds = duration<double>(t1 - t0).count();
+    res.controllable_state_count = total_controllable;
+    res.controllable_state_percentage =
+        100.0 * static_cast<double>(total_controllable) / static_cast<double>(num_prod);
 
-    return synthesis_result;
+    return res;
 }
 
-// baseline reachability algorithm without DFA (direct reach-avoid on the spatial grid)
+// Simple direct search without stages: just reach target cells while avoiding obstacles
 SynthesisResult BackwardReachabilitySolver::solve_spatial(
-    const TransitionSystem& transition_system,
-    const unordered_set<size_t>& target_spatial_states,
-    const unordered_set<size_t>& obstacle_spatial_states,
-    size_t maximum_iterations)
+    const TransitionSystem& ts,
+    const unordered_set<size_t>& targets,
+    const unordered_set<size_t>& obstacles,
+    size_t max_iters)
 {
-    auto start_timestamp = high_resolution_clock::now();
+    auto t0 = high_resolution_clock::now();
 
-    const size_t total_spatial_states = transition_system.state_count;
-    const size_t total_control_inputs = transition_system.input_count;
+    const size_t num_states = ts.state_count;
+    const size_t num_inputs = ts.input_count;
 
-    SynthesisResult synthesis_result;
-    synthesis_result.value_function.assign(total_spatial_states, UNREACHABLE_COST);
-    synthesis_result.feedback_policy.assign(total_spatial_states, nullopt);
+    SynthesisResult res;
+    res.value_function.assign(num_states, UNREACHABLE_COST);
+    res.feedback_policy.assign(num_states, nullopt);
 
-    for (size_t target_state : target_spatial_states) {
-        if (target_state < total_spatial_states &&
-            obstacle_spatial_states.find(target_state) == obstacle_spatial_states.end())
-        {
-            synthesis_result.value_function[target_state] = 0.0;
+    for (size_t target : targets) {
+        if (target < num_states && obstacles.find(target) == obstacles.end()) {
+            res.value_function[target] = 0.0;
         }
     }
 
-    size_t newly_controlled_states = 0;
+    size_t newly_controlled = 0;
 
-    for (size_t iteration = 1; iteration <= maximum_iterations; ++iteration) {
-        newly_controlled_states = 0;
-        vector<double> previous_value_function = synthesis_result.value_function;
+    for (size_t iter = 1; iter <= max_iters; ++iter) {
+        newly_controlled = 0;
+        vector<double> prev_v = res.value_function;
 
-        for (size_t state_index = 0; state_index < total_spatial_states; ++state_index) {
-            if (synthesis_result.value_function[state_index] < UNREACHABLE_COST ||
-                obstacle_spatial_states.find(state_index) != obstacle_spatial_states.end())
-            {
+        for (size_t s = 0; s < num_states; ++s) {
+            if (res.value_function[s] < UNREACHABLE_COST || obstacles.find(s) != obstacles.end()) {
                 continue;
             }
 
-            for (size_t control_index = 0; control_index < total_control_inputs; ++control_index) {
-                const auto& successor_states = transition_system.get_successors(state_index, control_index);
-
-                if (successor_states.empty()) {
+            for (size_t u = 0; u < num_inputs; ++u) {
+                const auto& succs = ts.get_successors(s, u);
+                if (succs.empty()) {
                     continue;
                 }
 
-                bool all_successors_controllable = true;
-                for (size_t successor : successor_states) {
-                    if (previous_value_function[successor] >= UNREACHABLE_COST) {
-                        all_successors_controllable = false;
+                bool all_safe = true;
+                for (size_t succ : succs) {
+                    if (prev_v[succ] >= UNREACHABLE_COST) {
+                        all_safe = false;
                         break;
                     }
                 }
 
-                if (all_successors_controllable) {
-                    synthesis_result.value_function[state_index] = static_cast<double>(iteration);
-                    synthesis_result.feedback_policy[state_index] = control_index;
-                    ++newly_controlled_states;
+                if (all_safe) {
+                    res.value_function[s] = static_cast<double>(iter);
+                    res.feedback_policy[s] = u;
+                    ++newly_controlled;
                     break;
                 }
             }
         }
 
-        synthesis_result.iterations_completed = iteration;
+        res.iterations_completed = iter;
 
-        if (newly_controlled_states == 0) {
-            synthesis_result.has_converged = true;
+        if (newly_controlled == 0) {
+            res.has_converged = true;
             break;
         }
     }
 
     size_t total_controllable = 0;
-    for (size_t state_index = 0; state_index < total_spatial_states; ++state_index) {
-        if (synthesis_result.value_function[state_index] < UNREACHABLE_COST) {
+    for (size_t s = 0; s < num_states; ++s) {
+        if (res.value_function[s] < UNREACHABLE_COST) {
             ++total_controllable;
         }
     }
 
-    auto end_timestamp = high_resolution_clock::now();
-    synthesis_result.computation_duration_seconds =
-        duration<double>(end_timestamp - start_timestamp).count();
-    synthesis_result.controllable_state_count = total_controllable;
-    synthesis_result.controllable_state_percentage =
-        100.0 * static_cast<double>(total_controllable) / static_cast<double>(total_spatial_states);
+    auto t1 = high_resolution_clock::now();
+    res.computation_duration_seconds = duration<double>(t1 - t0).count();
+    res.controllable_state_count = total_controllable;
+    res.controllable_state_percentage =
+        100.0 * static_cast<double>(total_controllable) / static_cast<double>(num_states);
 
-    return synthesis_result;
+    return res;
 }
 
 } // namespace symbolic::synthesis

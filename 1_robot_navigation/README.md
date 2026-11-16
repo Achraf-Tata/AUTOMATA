@@ -66,20 +66,27 @@ $$c_3' = c_3 + \tau \omega, \quad r_3' = r_3 + \tau \mu$$
 The transition relation $\Delta \subseteq Q \times U \times Q$ connects cell $q$ to cell $q'$ under input $u$ if:
 $$\text{ReachableBox}(q, u) \cap \text{CellBox}(q') \neq \emptyset$$
 
-### 4. Backward Reachability Synthesis (`BackwardReachabilitySolver`)
-Given a target set $T \subseteq Q$ and obstacle set $O \subseteq Q$, the backward controllable fixed-point algorithm computes the sequence of winning sets $S_k$:
-$$S_0 = T \setminus O$$
+### 4. Finding Winning Moves: Backward Reachability (`BackwardReachabilitySolver`)
+Instead of guessing forward paths from every starting point, we work **backward from the finish line** (Goal $T$) step by step:
+1. Start at the target: $S_0 = T \setminus O$ (cost = 0 steps).
+2. Step backward: a cell $q$ joins the winning club $S_{k+1}$ if the robot has at least one move $u$ where **every possible place noise could blow it** ($\Delta(q, u)$) stays inside the winning club $S_k$ and avoids all obstacles $O$:
 $$S_{k+1} = S_k \cup \left\{ q \in Q \setminus O \mid \exists u \in U, \emptyset \neq \Delta(q, u) \subseteq S_k \text{ and } \Delta(q, u) \cap O = \emptyset \right\}$$
-The iteration terminates when $S_{k+1} = S_k$. For each $q \in S^*$, the feedback controller is stored:
+3. Stop when no new cells can reach the goal ($S_{k+1} = S_k$). For each winning cell, we record the chosen move in our lookup table:
 $$\kappa(q) = u^*$$
 
-### 5. Closed-Loop Simulation (`ClosedLoopSimulator`)
-Given initial continuous pose $x_0$, the simulator iterates:
-1. Quantize $x_k \to q_k = \text{quantize}(x_k)$.
-2. If $q_k \in T$, terminate with success.
-3. If $q_k \in O$, terminate with collision.
-4. Retrieve control $u_k = \kappa(q_k)$.
-5. Apply step: $x_{k+1} = f(x_k, u_k, w_k)$ where $w_k \in [-\mu, \mu]^3$ is sampled uniformly.
+### 4b. Staying Safe Forever: The Invariance Game (`SafetySolver`)
+While reach-avoid grows winning spots outward from the goal, the safety algorithm (Algorithm 1 in Antoine Girard's paper) works **by elimination**:
+1. Start by assuming all open space outside obstacles is safe: $S_0 = Q \setminus O$.
+2. In each round, check every cell: if *all* available steering moves could allow noise to push the robot into danger, that cell is a trap and gets pruned:
+$$S_{k+1} = \left\{ q \in S_k \mid \exists u \in U, \emptyset \neq \Delta(q, u) \subseteq S_k \right\}$$
+3. When no more cells need to be removed ($S_{k+1} = S_k$), whatever is left is the **guaranteed safe zone** where the robot can drive around forever without ever crashing.
+
+### 5. Test-Driving the Robot in Simulation (`ClosedLoopSimulator`)
+Given any starting position and heading $x_0$, the simulator lets the robot drive in real time:
+1. Locate: find which grid box $q_k$ contains the robot's current position $x_k$.
+2. Check status: if $q_k \in T$, we reached the goal! If $q_k \in O$, we crashed!
+3. Pick move: look up the chosen steering action from our table: $u_k = \kappa(q_k)$.
+4. Step forward: roll the robot forward using the unicycle motion formula, adding a bit of random physical wobble: $x_{k+1} = f(x_k, u_k, w_k)$ where $w_k \in [-\mu, \mu]^3$.
 
 ---
 
@@ -104,7 +111,20 @@ cmake --build build --config Release
 ./build/Release/test_prototype.exe
 ```
 
-### Running the Driver Application
+### Running the Applications
+
+#### 1. Interactive Graphical User Interface (Dear ImGui + OpenGL)
+```bash
+./build/Release/prototype_gui.exe
+```
+Features the complete visual simulation suite:
+- Interactive 2D arena canvas with drag-and-drop robot placement and angle orientation
+- Live region editing (R1, R2, R3, R4) with resize and move controls
+- Real-time animated unicycle simulation with speed slider (1..60 steps/s) and bounded disturbance toggle
+- Fast OpenMP solver that computes all winning moves in ~1 second
+- Edge-case modal alert popups and arena modification warnings
+
+#### 2. Console Driver Application
 ```bash
 # Run with default resolution (50 x 50 x 20 = 50,000 cells)
 ./build/Release/prototype_navigation.exe

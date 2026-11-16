@@ -13,7 +13,7 @@ using namespace std;
 using namespace abstraction;
 using namespace automaton;
 
-// synthesis output containing the value function, feedback policy, and solve stats
+// Results holding the step counts to goal, chosen moves for each cell, and search stats
 struct SynthesisResult {
     bool has_converged = false;
     size_t iterations_completed = 0;
@@ -21,32 +21,32 @@ struct SynthesisResult {
     double controllable_state_percentage = 0.0;
     double computation_duration_seconds = 0.0;
 
-    // policy[product_state] = optimal control action index (1..15)
+    // The move to pick for each state (stores the chosen action index 1..15)
     vector<optional<size_t>> feedback_policy;
-    // value[product_state] = minimum steps to reach goal
+    // Minimum number of steps needed to reach the goal from here (or unreachable)
     vector<double> value_function;
 };
 
-// backward reachability fixed-point solver: works backwards from goal to find winning policy
+// Works backwards step-by-step from the goal to find winning moves for the robot
 class BackwardReachabilitySolver {
 public:
     static constexpr double UNREACHABLE_COST = 1e9;
 
-    // default constructor
+    // Default constructor
     BackwardReachabilitySolver() = default;
 
-    // synthesize feedback policy over product automaton: find all winning states satisfying the mission
+    // Computes the best moves across the combined tracking graph so the robot completes the mission
     [[nodiscard]] SynthesisResult solve_product(
-        const TransitionSystem& transition_system,
-        const ProductAutomaton& product_automaton,
-        size_t maximum_iterations = 100);
+        const TransitionSystem& ts,
+        const ProductAutomaton& automaton,
+        size_t max_iters = 100);
 
-    // baseline reachability on spatial grid alone (simple reach-avoid without DFA specification)
+    // Direct navigation on the spatial grid: reach target cells while avoiding obstacle cells
     [[nodiscard]] SynthesisResult solve_spatial(
-        const TransitionSystem& transition_system,
-        const unordered_set<size_t>& target_spatial_states,
-        const unordered_set<size_t>& obstacle_spatial_states,
-        size_t maximum_iterations = 100);
+        const TransitionSystem& ts,
+        const unordered_set<size_t>& targets,
+        const unordered_set<size_t>& obstacles,
+        size_t max_iters = 100);
 };
 
 } // namespace symbolic::synthesis

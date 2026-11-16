@@ -1,6 +1,7 @@
 #pragma once
 
 #include "grid_partition.hpp"
+#include "grid_quantizer.hpp"
 #include "dfa.hpp"
 #include "transition_system.hpp"
 #include <vector>
@@ -27,7 +28,7 @@ struct ProductState {
     AutomatonState automaton_state = AutomatonState::Initial;
 };
 
-// product automaton: combines physical robot cells with high-level DFA states
+// Combined tracker: pairs each physical grid cell with where we are in the mission
 class ProductAutomaton {
 public:
     size_t spatial_cell_count = 0;
@@ -36,44 +37,44 @@ public:
     DeterministicFiniteAutomaton specification_dfa;
     ArenaRegions arena_regions;
 
-    // region label (free, R1, R2, R3, R4) for each grid cell
+    // Region label (free, R1, R2, R3, R4) for each grid cell
     vector<ObservationSymbol> cell_observation_labels;
 
-    // build product automaton and classify each grid cell into its region
+    // Build the combined tracker and classify each grid cell into its region
     ProductAutomaton(
-        size_t total_spatial_cells,
+        size_t num_cells,
         const GridPartition& partition,
         const ArenaRegions& regions = ArenaRegions());
 
-    // total states: spatial_cells * 5 DFA states
+    // Total combinations: spatial_cells * 5 mission stages
     [[nodiscard]] size_t total_product_states() const noexcept;
 
-    // pack (cell, dfa_state) into a 1D index: (q - 1) * total_cells + cell
+    // Flattens (cell, mission_stage) into a single array index: (q - 1) * total_cells + cell
     [[nodiscard]] size_t encode_product_index(
-        size_t spatial_cell_index,
-        AutomatonState automaton_state) const noexcept;
+        size_t s,
+        AutomatonState q) const noexcept;
 
-    // unpack a 1D product index back into (cell, dfa_state)
+    // Unpacks an array index back into (cell, mission_stage)
     [[nodiscard]] ProductState decode_product_index(
-        size_t product_index) const noexcept;
+        size_t p) const noexcept;
 
-    // read region label for a cell
+    // Get the precomputed region label for a spatial cell
     [[nodiscard]] ObservationSymbol get_cell_observation(
-        size_t spatial_cell_index) const noexcept;
+        size_t s) const noexcept;
 
-    // check which region contains point (x, y)
+    // Check which region a continuous position (x, y) is located inside
     [[nodiscard]] ObservationSymbol evaluate_point_observation(
-        double x_coordinate,
-        double y_coordinate) const noexcept;
+        double x,
+        double y) const noexcept;
 
-    // find all product states that have reached the goal (q4)
+    // Find all combinations where the mission is in the accepting goal state (q4)
     [[nodiscard]] unordered_set<size_t> compute_target_product_states() const;
 
-    // find all product states that are in the sink trap (q5)
+    // Find all combinations where the mission failed (q5)
     [[nodiscard]] unordered_set<size_t> compute_sink_product_states() const;
 
 private:
-    // precompute region labels for all grid cells
+    // Classify all cells in the grid by region
     void precompute_cell_labels(const GridPartition& partition);
 };
 
@@ -84,3 +85,24 @@ namespace symbolic {
     using automaton::ProductState;
     using automaton::ProductAutomaton;
 }
+
+namespace automaton {
+
+using namespace std;
+using namespace grid;
+
+inline constexpr int NDFA = 5;
+inline constexpr int NCELLS = TOTAL_SPATIAL_CELLS;
+inline constexpr int NTOTAL = NDFA * TOTAL_SPATIAL_CELLS;
+inline constexpr float INF = 1e9f;
+
+int dfa_transition(int current_state, int observation_label) noexcept;
+vector<float> init_value_function();
+vector<uint8_t> init_controller();
+
+inline int product_index(int automaton_state, int cell_flat) noexcept {
+    return (automaton_state - 1) * TOTAL_SPATIAL_CELLS + cell_flat;
+}
+
+} // namespace automaton
+
