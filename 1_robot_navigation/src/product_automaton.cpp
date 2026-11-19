@@ -10,80 +10,80 @@ using enum ObservationSymbol;
 
 // constructor: build product automaton and classify each grid cell into its region
 ProductAutomaton::ProductAutomaton(
-    size_t total_spatial_cells,
-    const GridPartition& partition,
-    const ArenaRegions& regions)
-    : spatial_cell_count(total_spatial_cells),
-      specification_dfa(create_navigation_specification_dfa()),
-      arena_regions(regions)
+    size_t n_cells,
+    const GridPartition& grid,
+    const ArenaRegions& regs)
+    : num_cells(n_cells),
+      dfa(create_navigation_specification_dfa()),
+      regions(regs)
 {
-    precompute_cell_labels(partition);
+    precompute_cell_labels(grid);
 }
 
 // total product states: spatial_cells * 5 DFA states
 size_t ProductAutomaton::total_product_states() const noexcept {
-    return spatial_cell_count * DFA_STATE_COUNT;
+    return num_cells * DFA_STATE_COUNT;
 }
 
 // pack (cell, dfa_state) into a 1D index: (q - 1) * total_cells + cell
 size_t ProductAutomaton::encode_product_index(
-    size_t spatial_cell_index,
-    AutomatonState automaton_state) const noexcept
+    size_t s,
+    AutomatonState q) const noexcept
 {
-    auto state_offset = static_cast<size_t>(automaton_state) - 1;
-    return state_offset * spatial_cell_count + spatial_cell_index;
+    auto q_offset = static_cast<size_t>(q) - 1;
+    return q_offset * num_cells + s;
 }
 
 // unpack a 1D product index back into (cell, dfa_state)
 ProductState ProductAutomaton::decode_product_index(
-    size_t product_index) const noexcept
+    size_t p) const noexcept
 {
-    size_t state_offset = product_index / spatial_cell_count;
-    size_t spatial_index = product_index % spatial_cell_count;
+    size_t q_offset = p / num_cells;
+    size_t s = p % num_cells;
 
     return ProductState{
-        spatial_index,
-        static_cast<AutomatonState>(state_offset + 1)
+        s,
+        static_cast<AutomatonState>(q_offset + 1)
     };
 }
 
 // determine which region a 2D coordinate belongs to (obstacle R4 takes top priority)
 ObservationSymbol ProductAutomaton::evaluate_point_observation(
-    double x_coordinate,
-    double y_coordinate) const noexcept
+    double x,
+    double y) const noexcept
 {
     // Obstacle R4 has highest priority
-    if (x_coordinate >= arena_regions.obstacle.x_range.lower_bound &&
-        x_coordinate <= arena_regions.obstacle.x_range.upper_bound &&
-        y_coordinate >= arena_regions.obstacle.y_range.lower_bound &&
-        y_coordinate <= arena_regions.obstacle.y_range.upper_bound)
+    if (x >= regions.obstacle.x_range.low &&
+        x <= regions.obstacle.x_range.high &&
+        y >= regions.obstacle.y_range.low &&
+        y <= regions.obstacle.y_range.high)
     {
         return Obstacle;
     }
 
     // Waypoint R1
-    if (x_coordinate >= arena_regions.waypoint_1.x_range.lower_bound &&
-        x_coordinate <= arena_regions.waypoint_1.x_range.upper_bound &&
-        y_coordinate >= arena_regions.waypoint_1.y_range.lower_bound &&
-        y_coordinate <= arena_regions.waypoint_1.y_range.upper_bound)
+    if (x >= regions.waypoint_1.x_range.low &&
+        x <= regions.waypoint_1.x_range.high &&
+        y >= regions.waypoint_1.y_range.low &&
+        y <= regions.waypoint_1.y_range.high)
     {
         return Waypoint1;
     }
 
     // Waypoint R2
-    if (x_coordinate >= arena_regions.waypoint_2.x_range.lower_bound &&
-        x_coordinate <= arena_regions.waypoint_2.x_range.upper_bound &&
-        y_coordinate >= arena_regions.waypoint_2.y_range.lower_bound &&
-        y_coordinate <= arena_regions.waypoint_2.y_range.upper_bound)
+    if (x >= regions.waypoint_2.x_range.low &&
+        x <= regions.waypoint_2.x_range.high &&
+        y >= regions.waypoint_2.y_range.low &&
+        y <= regions.waypoint_2.y_range.high)
     {
         return Waypoint2;
     }
 
     // Goal R3
-    if (x_coordinate >= arena_regions.goal.x_range.lower_bound &&
-        x_coordinate <= arena_regions.goal.x_range.upper_bound &&
-        y_coordinate >= arena_regions.goal.y_range.lower_bound &&
-        y_coordinate <= arena_regions.goal.y_range.upper_bound)
+    if (x >= regions.goal.x_range.low &&
+        x <= regions.goal.x_range.high &&
+        y >= regions.goal.y_range.low &&
+        y <= regions.goal.y_range.high)
     {
         return Goal;
     }
@@ -92,52 +92,80 @@ ObservationSymbol ProductAutomaton::evaluate_point_observation(
 }
 
 // classify each grid cell by checking which region its center point falls in
-void ProductAutomaton::precompute_cell_labels(const GridPartition& partition) {
-    cell_observation_labels.resize(spatial_cell_count, FreeSpace);
+void ProductAutomaton::precompute_cell_labels(const GridPartition& grid) {
+    cell_labels.resize(num_cells, FreeSpace);
 
-    for (size_t cell_index = 0; cell_index < spatial_cell_count; ++cell_index) {
-        BoundingBox cell_box = partition.get_cell_box(cell_index);
-        auto center_point = cell_box.center();
-
-        cell_observation_labels[cell_index] = evaluate_point_observation(center_point[0], center_point[1]);
+    for (size_t s = 0; s < num_cells; ++s) {
+        BoundingBox box = grid.get_cell_box(s);
+        auto c = box.center();
+        cell_labels[s] = evaluate_point_observation(c[0], c[1]);
     }
 }
 
 // get precomputed region label for a cell
-ObservationSymbol ProductAutomaton::get_cell_observation(
-    size_t spatial_cell_index) const noexcept
-{
-    if (spatial_cell_index < cell_observation_labels.size()) {
-        return cell_observation_labels[spatial_cell_index];
+ObservationSymbol ProductAutomaton::get_cell_observation(size_t s) const noexcept{
+    if (s < cell_labels.size()) {
+        return cell_labels[s];
     }
     return FreeSpace;
 }
 
 // collect all product states where the DFA is in the accepting goal state (q4)
 unordered_set<size_t> ProductAutomaton::compute_target_product_states() const {
-    unordered_set<size_t> target_product_states;
+    unordered_set<size_t> targets;
 
-    for (size_t spatial_index = 0; spatial_index < spatial_cell_count; ++spatial_index) {
-        // Goal reached (q4) is the accepting target state
-        size_t target_product_index = encode_product_index(spatial_index, GoalReached);
-        target_product_states.insert(target_product_index);
+    for (size_t s = 0; s < num_cells; ++s) {
+        targets.insert(encode_product_index(s, GoalReached));
     }
 
-    return target_product_states;
+    return targets;
 }
 
 // collect all product states where the DFA is in the sink trap state (q5)
 unordered_set<size_t> ProductAutomaton::compute_sink_product_states() const {
-    unordered_set<size_t> sink_product_states;
+    unordered_set<size_t> sinks;
 
-    for (size_t spatial_index = 0; spatial_index < spatial_cell_count; ++spatial_index) {
-        // Sink trap (q5) is the error/obstacle state
-        size_t sink_product_index = encode_product_index(spatial_index, SinkTrap);
-        sink_product_states.insert(sink_product_index);
+    for (size_t s = 0; s < num_cells; ++s) {
+        sinks.insert(encode_product_index(s, SinkTrap));
     }
 
-    return sink_product_states;
+    return sinks;
 }
 
 } // namespace symbolic::automaton
 
+namespace automaton {
+
+using namespace std;
+
+// DFA transition table lookup for fast integer indices
+int dfa_transition(int q, int sym) noexcept {
+    static constexpr int TABLE[5][5] = {
+        { 1, 2, 3, 1, 5 },
+        { 2, 2, 5, 4, 5 },
+        { 3, 5, 3, 4, 5 },
+        { 4, 4, 4, 4, 4 },
+        { 5, 5, 5, 5, 5 }
+    };
+    if (q < 1 || q > 5 || sym < 1 || sym > 5) {
+        return q;
+    }
+    return TABLE[q - 1][sym - 1];
+}
+
+// initialize value function: all states set to infinity, goal states (q4) set to 0
+vector<float> init_value_function() {
+    vector<float> V(NTOTAL, INF);
+    int q4_base = (4 - 1) * NCELLS;
+    for (int s = 0; s < NCELLS; ++s) {
+        V[q4_base + s] = 0.0f;
+    }
+    return V;
+}
+
+// initialize controller table with zeros (uncontrolled)
+vector<uint8_t> init_controller() {
+    return vector<uint8_t>(NTOTAL, 0u);
+}
+
+} // namespace automaton

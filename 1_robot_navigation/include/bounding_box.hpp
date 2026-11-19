@@ -18,10 +18,10 @@ public:
     BoundingBox() = default;
 
     // build box from three 1D intervals: [x_min, x_max], [y_min, y_max], [th_min, th_max]
-    BoundingBox(const Interval& x_interval, const Interval& y_interval, const Interval& theta_interval);
+    BoundingBox(const Interval& x_int, const Interval& y_int, const Interval& th_int);
 
     // build box from explicit min and max boundary coordinates
-    BoundingBox(double x_minimum, double x_maximum,double y_minimum, double y_maximum,double theta_minimum, double theta_maximum);
+    BoundingBox(double x_min, double x_max, double y_min, double y_max, double th_min, double th_max);
 
     // 3D center point: {x_mid, y_mid, theta_mid}
     [[nodiscard]] array<double, 3> center() const noexcept;
@@ -30,13 +30,13 @@ public:
     [[nodiscard]] array<double, 3> radii() const noexcept;
 
     // check if a robot pose (x, y, theta) is inside this box
-    [[nodiscard]] bool contains(double x_coordinate, double y_coordinate, double theta_angle) const noexcept;
+    [[nodiscard]] bool contains(double x, double y, double theta) const noexcept;
 
     // check if this box overlaps with another 3D box (all 3 dimensions must overlap)
-    [[nodiscard]] bool intersects(const BoundingBox& other_box) const noexcept;
+    [[nodiscard]] bool intersects(const BoundingBox& other) const noexcept;
 
     // compute the common 3D overlapping region with another box
-    [[nodiscard]] BoundingBox intersect_with(const BoundingBox& other_box) const noexcept;
+    [[nodiscard]] BoundingBox intersect_with(const BoundingBox& other) const noexcept;
 
     // returns true if any coordinate interval is empty or invalid
     [[nodiscard]] bool is_empty() const noexcept;
