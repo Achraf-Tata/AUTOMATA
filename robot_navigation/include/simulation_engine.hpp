@@ -23,4 +23,8 @@ void generate_trajectory_bundle(AppState& app, int num_runs = 50);
 // updating iteration count and progress bar in real time until the controller is saved.
 void trigger_synthesis(AppState& app);
 
+// Publish completed results on the calling (GUI) thread only.
+bool poll_synthesis(AppState& app, bool wait = false);
+void cancel_synthesis(AppState& app);
+
 } // namespace robot_nav::engine

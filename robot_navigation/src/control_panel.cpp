@@ -37,7 +37,7 @@ void render_right_cards(AppState& app, float width) {
     }
 
     if (g_fonts.small) PushFont(g_fonts.small);
-    TextColored(text_muted, "Backward reachability synthesis (35 iterations)");
+    TextColored(text_muted, "Backward reachability synthesis");
     if (g_fonts.small) PopFont();
 
     Spacing();
@@ -49,7 +49,7 @@ void render_right_cards(AppState& app, float width) {
         ProgressBar(app.solve_progress, ImVec2(avail_w, 24.0f));
         if (g_fonts.small) PushFont(g_fonts.small);
         char prog_buf[64];
-        snprintf(prog_buf, sizeof(prog_buf), "Iteration %d / 35 (%d new states)",
+        snprintf(prog_buf, sizeof(prog_buf), "Iteration %d (%d new states)",
                  app.solve_iterations, app.solve_changes);
         TextColored(text_muted, "%s", prog_buf);
         if (g_fonts.small) PopFont();

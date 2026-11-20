@@ -118,6 +118,7 @@ int main() {
 
     while (!glfwWindowShouldClose(g_window)) {
         glfwPollEvents();
+        poll_synthesis(app);
 
         // Animated simulation stepper at user-configured speed
         double current_time = glfwGetTime();
@@ -198,6 +199,7 @@ int main() {
         glfwSwapBuffers(g_window);
     }
 
+    cancel_synthesis(app);
     shutdown_window_and_gl();
     return 0;
 }

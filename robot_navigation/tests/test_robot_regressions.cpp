@@ -43,10 +43,33 @@ void test_region_boundaries() {
             "Contact with the closed obstacle boundary must be excluded");
 }
 
+void test_background_lifetime() {
+    robot_nav::AppState app;
+    robot_nav::init_app_state(app);
+    app.abs_tables = grid::precompute_abstraction_tables();
+    app.abs_tables_ready = true;
+    robot_nav::engine::trigger_synthesis(app);
+    app.regions.r1_x0 += 0.1;
+    require(!robot_nav::engine::poll_synthesis(app, true), "A stale arena result was published");
+    require(!app.controller_ready && !app.solving, "Stale synthesis left an active controller");
+    robot_nav::engine::trigger_synthesis(app);
+    robot_nav::engine::cancel_synthesis(app);
+    require(!app.solving && !app.synthesis_job.valid(), "Worker was not joined on cancellation");
+    {
+        robot_nav::AppState closing;
+        robot_nav::init_app_state(closing);
+        closing.abs_tables = app.abs_tables;
+        closing.abs_tables_ready = true;
+        robot_nav::engine::trigger_synthesis(closing);
+        // Destruction waits safely; the worker never references closing.
+    }
+}
+
 int main() {
     try {
         test_workspace_exit();
         test_region_boundaries();
+        test_background_lifetime();
         std::cout << "Robot regression checks passed.\n";
         return 0;
     } catch (const std::exception& error) {

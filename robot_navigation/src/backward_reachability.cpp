@@ -138,7 +138,8 @@ int solve_reachability_backward_cpp(
     const ::grid::RegionConfig& regions,
     const ::grid::AbstractionTables& tables,
     function<void(int, float)> callback,
-    bool use_parallel)
+    bool use_parallel,
+    function<bool()> cancelled)
 {
     using namespace ::grid;
     uint8_t observations[NX][NY];
@@ -151,6 +152,7 @@ int solve_reachability_backward_cpp(
     }
 
     for (int iteration = 1; iteration <= 100; ++iteration) {
+        if (cancelled && cancelled()) return -1;
         const vector<float> previous = V;
         int updates = 0;
         auto process_row = [&](int ix) {

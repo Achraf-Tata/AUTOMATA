@@ -10,6 +10,9 @@
 #include <string>
 #include <array>
 #include <cmath>
+#include <atomic>
+#include <future>
+#include <memory>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -33,6 +36,20 @@ enum class RunStatus {
     Uncontrollable        // Robot entered a state where no valid control action exists in the winning set
 };
 using enum RunStatus;
+
+struct SynthesisProgress {
+    std::atomic<int> iteration{0};
+    std::atomic<int> changes{0};
+    std::atomic<bool> cancelled{false};
+};
+
+struct SynthesisOutput {
+    RegionConfig regions;
+    vector<float> values;
+    vector<uint8_t> controls;
+    int iterations = 0;
+    float duration = 0.0f;
+};
 
 // Global application state holding configuration, synthesis tables, and interactive UI states
 struct AppState {
@@ -60,6 +77,8 @@ struct AppState {
     int   solve_changes             = 0;      // Count of newly conquered states in current iteration
     bool  auto_simulate_after_solve = false;
     char  controller_filename[128]  = "controller.bin";
+    std::shared_ptr<SynthesisProgress> synthesis_progress;
+    std::future<SynthesisOutput> synthesis_job;
 
     // --- Simulation execution state ---
     bool            sim_running    = false;   // True while animated simulation is active

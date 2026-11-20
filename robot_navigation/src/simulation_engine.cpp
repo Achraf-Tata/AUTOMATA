@@ -292,44 +292,74 @@ void generate_trajectory_bundle(AppState& app, int num_runs) {
 // so the UI remains fluid and responsive during computation
 void trigger_synthesis(AppState& app) {
     if (app.solving || !app.abs_tables_ready) return;
-
     app.solving = true;
     app.controller_ready = false;
+    app.sim_running = false;
     app.solve_progress = 0.0f;
     app.solve_changes = 0;
     app.solve_iterations = 0;
+    app.synthesis_progress = make_shared<SynthesisProgress>();
+    const auto progress = app.synthesis_progress;
+    // The worker owns snapshots; GUI edits cannot modify an active calculation.
+    app.synthesis_job = async(launch::async,
+        [regions = app.regions, tables = app.abs_tables, parallel = app.use_parallel, progress]() {
+            SynthesisOutput output;
+            output.regions = regions;
+            output.values = init_value_function();
+            output.controls = init_controller();
+            const auto start = steady_clock::now();
+            output.iterations = solve_reachability_backward_cpp(
+                output.values, output.controls, regions, tables,
+                [progress](int iteration, float changes) {
+                    progress->iteration.store(iteration);
+                    progress->changes.store(static_cast<int>(changes));
+                }, parallel, [progress]() { return progress->cancelled.load(); });
+            output.duration = duration<float>(steady_clock::now() - start).count();
+            return output;
+        });
+}
 
-    thread([&app]() {
-        auto t0 = high_resolution_clock::now();
-        app.V = init_value_function();
-        app.ctrl = init_controller();
-
-        app.solve_iterations = symbolic::synthesis::solve_reachability_backward_cpp(
-            app.V, app.ctrl, app.regions, app.abs_tables,
-            [&app](int it, float ch) {
-                app.solve_iterations = it;
-                app.solve_changes = static_cast<int>(ch);
-                app.solve_progress = min(1.0f, static_cast<float>(it) / 35.0f);
-            },
-            app.use_parallel
-        );
-
-        auto t1 = high_resolution_clock::now();
-        app.solve_duration = duration<float>(t1 - t0).count();
-        app.solving = false;
-        app.controller_ready = true;
+bool poll_synthesis(AppState& app, bool wait) {
+    if (!app.synthesis_job.valid()) return false;
+    app.solve_iterations = app.synthesis_progress->iteration.load();
+    app.solve_changes = app.synthesis_progress->changes.load();
+    app.solve_progress = min(0.99f, app.solve_iterations / 100.0f);
+    if (wait) app.synthesis_job.wait();
+    if (app.synthesis_job.wait_for(milliseconds(0)) != future_status::ready) return false;
+    app.solving = false;
+    try {
+        auto output = app.synthesis_job.get();
+        if (app.synthesis_progress->cancelled.load() || output.iterations < 0) return false;
+        if (!(output.regions == app.regions)) {
+            app.trigger_alert("Arena Changed", "The completed controller belongs to the previous arena.",
+                              "Regions changed during synthesis.", "Run the solver for the current arena.");
+            return false;
+        }
+        app.V = move(output.values);
+        app.ctrl = move(output.controls);
+        app.solve_iterations = output.iterations;
+        app.solve_duration = output.duration;
         app.solve_progress = 1.0f;
+        app.controller_ready = true;
         app.arena_modified = false;
-        app.initial_regions = app.regions;
-
-        // Auto-save the freshly synthesized controller binary to disk
+        app.initial_regions = output.regions;
         save_controller_binary(app.controller_filename, app.V, app.ctrl);
-
         if (app.auto_simulate_after_solve) {
             app.auto_simulate_after_solve = false;
             run_simulation(app);
         }
-    }).detach();
+        return true;
+    } catch (const exception& error) {
+        app.trigger_alert("Synthesis Failed", error.what(),
+                          "The background calculation could not finish.", "Run the solver again.");
+        return false;
+    }
+}
+
+void cancel_synthesis(AppState& app) {
+    if (!app.synthesis_job.valid()) return;
+    app.synthesis_progress->cancelled.store(true);
+    poll_synthesis(app, true);
 }
 
 } // namespace robot_nav::engine

@@ -68,6 +68,7 @@ struct RegionConfig {
     double r2_x0 = 8.5; double r2_x1 = 9.5; double r2_y0 = 2.0; double r2_y1 = 3.0;
     double r3_x0 = 2.0; double r3_x1 = 3.0; double r3_y0 = 0.5; double r3_y1 = 1.5;
     double r4_x0 = 3.0; double r4_x1 = 7.0; double r4_y0 = 3.0; double r4_y1 = 7.0;
+    bool operator==(const RegionConfig&) const = default;
 };
 
 // 3D discrete grid coordinates (cell_x, cell_y, cell_theta)

@@ -21,6 +21,8 @@ void AppState::trigger_alert(const string& title,
 // Marks the arena geometry as changed by the user (dragging/resizing regions)
 void mark_arena_modified(AppState& app) {
     app.arena_modified = true;
+    app.controller_ready = false;
+    app.sim_running = false;
 }
 
 // Resets the robot state back to its initial start pose and clears the drawn trajectory

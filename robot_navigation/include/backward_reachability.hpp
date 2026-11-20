@@ -51,7 +51,8 @@ int solve_reachability_backward_cpp(
     const ::grid::RegionConfig&      regions,
     const ::grid::AbstractionTables& tables,
     std::function<void(int, float)>  callback = nullptr,
-    bool                             use_parallel = true);
+    bool                             use_parallel = true,
+    std::function<bool()>            cancelled = {});
 
 // Saves the synthesized value function and controller policy to a binary file.
 bool save_controller_binary(const char*                  file_path,
