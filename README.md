@@ -8,7 +8,6 @@ The project connects continuous physical models with finite-state automata. It b
 
 - [Overview](#overview)
 - [Features](#features)
-- [Interface screenshots](#interface-screenshots)
 - [Synthesis pipeline](#synthesis-pipeline)
 - [Build and run](#build-and-run)
 - [Repository structure](#repository-structure)
@@ -47,26 +46,6 @@ The robot application follows the numerical example in *Approches symboliques po
 - **OpenMP benchmarks** for synthesizing room controllers across different network sizes.
 - **A 24-hour, 16-room simulation** with changing outdoor temperature and CSV output.
 - **Course competition benchmarks** and a comparison of local versus global state-space sizes.
-
-## Interface screenshots
-
-### Arena and controls
-
-![Robot interface showing the arena, waypoints, obstacle and simulation controls](docs/images/robot-overview.jpg)
-
-The default arena contains two waypoint options (R1 and R2), the goal (R3), and the obstacle (R4). The panel on the right controls synthesis, the starting pose and the simulation.
-
-### A completed mission
-
-![Robot reaches R3 after visiting R2, with a successful result after 22 steps](docs/images/robot-mission-complete.jpg)
-
-Starting from $(1,2,0)$ without disturbances, the robot visits R2, avoids R4, and reaches R3 in 22 steps.
-
-### Trajectories under bounded disturbances
-
-![Bundle of 50 disturbed robot trajectories reaching the goal through R2](docs/images/robot-disturbed-trajectories.jpg)
-
-The same controller completes all 50 runs with disturbances in $[-0.05,0.05]$ on each state component. The light blue lines show the different trajectories; all visit R2 before reaching R3.
 
 ## Synthesis pipeline
 
@@ -158,8 +137,6 @@ The building application prints its benchmarks and writes `circular_building_24h
 
 ```text
 AUTOMATA/
-├── docs/
-│   └── images/          UI screenshots used by the READMEs
 ├── robot_navigation/
 │   ├── include/         Model, grid, automaton, solver and GUI interfaces
 │   ├── src/             Synthesis, simulation and application entry points

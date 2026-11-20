@@ -71,26 +71,6 @@ The application automatically caches the policy in `controller.bin` in the worki
 
 Moving or resizing a region invalidates the controller. Synthesis uses an independent snapshot of the arena; a result for an edited arena is discarded. Closing the window cancels and joins an active calculation.
 
-## Interface screenshots
-
-### Arena and controls
-
-![Default robot arena and controller and simulation panels](../docs/images/robot-overview.jpg)
-
-Set the initial pose, synthesize a controller, and inspect the waypoint, goal and obstacle regions in the arena.
-
-### Mission completed
-
-![Successful robot mission through R2 to R3 in 22 steps](../docs/images/robot-mission-complete.jpg)
-
-The default start $(1,2,0)$ reaches R3 after visiting R2 in 22 steps without disturbances.
-
-### Disturbed trajectory bundle
-
-![Fifty successful robot trajectories with bounded disturbances](../docs/images/robot-disturbed-trajectories.jpg)
-
-All 50 disturbed runs shown here complete the mission through R2. Each state component receives disturbances in $[-0.05,0.05]$.
-
 ## Validation
 
 The five CTest groups pass on Windows with GCC and OpenMP. The default full-grid fixed point converges in 36 iterations. The stronger treatment of obstacle contact and ambiguous observations can change the policy and iteration count from the paper's illustration.

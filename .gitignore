@@ -8,12 +8,9 @@ bin/
 *.bin
 .vscode/
 
-# Exclude reference documents and MATLAB code; keep README screenshots
+# Exclude figures, documentation, and MATLAB reference code
 figures/
-docs/*
-!docs/images/
-docs/images/*
-!docs/images/*.jpg
+docs/
 matlab_reference/
 *.pdf
 
