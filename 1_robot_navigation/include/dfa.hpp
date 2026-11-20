@@ -40,28 +40,28 @@ public:
 
     // transition function: delta(q, symbol) -> returns next automaton state
     [[nodiscard]] AutomatonState transition(
-        AutomatonState current_state,
-        ObservationSymbol observation_symbol) const noexcept;
+        AutomatonState q,
+        ObservationSymbol sym) const noexcept;
 
     // check if an observation word satisfies the mission (ends in accepting state q4)
     [[nodiscard]] bool accepts_word(
-        const vector<ObservationSymbol>& observation_word) const noexcept;
+        const vector<ObservationSymbol>& word) const noexcept;
 
     // run a sequence of observations through the DFA from start and return final state
     [[nodiscard]] AutomatonState evaluate_trace(
-        const vector<ObservationSymbol>& observation_trace) const noexcept;
+        const vector<ObservationSymbol>& trace) const noexcept;
 
     // check if this is an accepting goal state (q4)
-    [[nodiscard]] bool is_accepting_state(AutomatonState state) const noexcept;
+    [[nodiscard]] bool is_accepting_state(AutomatonState q) const noexcept;
 
     // check if this is a permanent sink trap state (q5)
-    [[nodiscard]] bool is_sink_state(AutomatonState state) const noexcept;
+    [[nodiscard]] bool is_sink_state(AutomatonState q) const noexcept;
 
     // convert state enum to readable text for printing/debugging
-    [[nodiscard]] static string state_to_string(AutomatonState state);
+    [[nodiscard]] static string state_to_string(AutomatonState q);
 
     // convert symbol enum to readable text for printing/debugging
-    [[nodiscard]] static string symbol_to_string(ObservationSymbol symbol);
+    [[nodiscard]] static string symbol_to_string(ObservationSymbol sym);
 
 private:
     // 5x5 lookup table: delta[current_state - 1][symbol]

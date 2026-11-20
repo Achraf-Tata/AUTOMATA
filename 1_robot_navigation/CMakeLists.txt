@@ -20,6 +20,8 @@ set(PROTOTYPE_SOURCES
     src/unicycle_model.cpp
     src/transition_system.cpp
     src/backward_reachability.cpp
+    src/safety_solver.cpp
+    src/grid_quantizer.cpp
     src/simulator.cpp
 )
 

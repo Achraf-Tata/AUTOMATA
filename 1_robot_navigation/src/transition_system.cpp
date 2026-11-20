@@ -7,60 +7,60 @@ using namespace domain;
 using namespace grid;
 using namespace model;
 
-// allocate 2D transition table: state_count x input_count
-TransitionSystem::TransitionSystem(size_t total_states, size_t total_inputs)
-    : state_count(total_states), input_count(total_inputs)
+// allocate 2D transition table: num_states x num_inputs
+TransitionSystem::TransitionSystem(size_t n_states, size_t n_inputs)
+    : num_states(n_states), num_inputs(n_inputs)
 {
-    transition_table.resize(state_count, vector<vector<size_t>>(input_count));
+    transitions.resize(num_states, vector<vector<size_t>>(num_inputs));
 }
 
 // compute abstraction: for each cell and control action, find all reachable next cells
 void TransitionSystem::build_abstraction(
-    const GridPartition& partition,
+    const GridPartition& grid,
     const UnicycleModel& model,
-    const function<void(size_t, size_t)>& progress_callback)
+    const function<void(size_t, size_t)>& callback)
 {
-    state_count = partition.total_cells();
-    input_count = model.num_controls();
-    transition_table.assign(state_count, vector<vector<size_t>>(input_count));
+    num_states = grid.total_cells();
+    num_inputs = model.num_controls();
+    transitions.assign(num_states, vector<vector<size_t>>(num_inputs));
 
-    for (size_t source_state_index = 0; source_state_index < state_count; ++source_state_index) {
-        BoundingBox cell_box = partition.get_cell_box(source_state_index);
+    for (size_t s = 0; s < num_states; ++s) {
+        BoundingBox box = grid.get_cell_box(s);
 
-        for (size_t control_index = 0; control_index < input_count; ++control_index) {
-            const auto& control_input = model.get_control(control_index);
-            BoundingBox reachable_box = model.compute_reachable_box(cell_box, control_input);
+        for (size_t u = 0; u < num_inputs; ++u) {
+            const auto& ctrl = model.get_control(u);
+            BoundingBox rbox = model.compute_reachable_box(box, ctrl);
 
             // over-approximation: all cells touching the reachable box are potential successors
-            vector<size_t> successor_cells = partition.query_overlapping_cells(reachable_box);
-            transition_table[source_state_index][control_index] = move(successor_cells);
+            vector<size_t> succs = grid.query_overlapping_cells(rbox);
+            transitions[s][u] = move(succs);
         }
 
-        if (progress_callback && (source_state_index % 2000 == 0 || source_state_index == state_count - 1)) {
-            progress_callback(source_state_index + 1, state_count);
+        if (callback && (s % 2000 == 0 || s == num_states - 1)) {
+            callback(s + 1, num_states);
         }
     }
 }
 
 // return the list of reachable next cells from a given state and control
-const vector<size_t>& TransitionSystem::get_successors(size_t state_index, size_t control_index) const {
-    return transition_table[state_index][control_index];
+const vector<size_t>& TransitionSystem::get_successors(size_t s, size_t u) const {
+    return transitions[s][u];
 }
 
 // count total number of directed edges in the transition system
 size_t TransitionSystem::total_transitions() const noexcept {
     size_t count = 0;
-    for (const auto& state_entry : transition_table) {
-        for (const auto& successor_list : state_entry) {
-            count += successor_list.size();
+    for (const auto& row : transitions) {
+        for (const auto& succs : row) {
+            count += succs.size();
         }
     }
     return count;
 }
 
 // check if a cell index is valid
-bool TransitionSystem::is_valid_state(size_t state_index) const noexcept {
-    return state_index < state_count;
+bool TransitionSystem::is_valid_state(size_t s) const noexcept {
+    return s < num_states;
 }
 
 } // namespace symbolic::abstraction
