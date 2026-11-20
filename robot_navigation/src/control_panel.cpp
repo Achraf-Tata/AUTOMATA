@@ -1,7 +1,6 @@
 #include "control_panel.hpp"
 #include "ui_theme.hpp"
 #include "simulation_engine.hpp"
-#include "backward_reachability.hpp"
 #include "imgui.h"
 
 #include <cstdio>
@@ -15,7 +14,6 @@ using namespace ImGui;
 using namespace theme;
 using namespace colors;
 using namespace engine;
-using namespace solver;
 using namespace grid;
 using namespace unicycle;
 using enum RunStatus;
@@ -44,7 +42,7 @@ void render_right_cards(AppState& app, float width) {
     Checkbox("Parallel solver (Multi-core)", &app.use_parallel);
     Spacing();
 
-    // Status pill badge and metrics + Save/Load
+    // Status pill badge and metrics
     if (app.solving) {
         ProgressBar(app.solve_progress, ImVec2(avail_w, 24.0f));
         if (g_fonts.small) PushFont(g_fonts.small);
@@ -77,34 +75,6 @@ void render_right_cards(AppState& app, float width) {
             TextColored(text_muted, "No controller in memory");
         }
 
-        // Save & Load buttons on the right of the status row
-        SameLine(avail_w - 110.0f);
-        if (outline_button("Save", ImVec2(52.0f, 24.0f))) {
-            if (app.controller_ready) {
-                if (!save_controller_binary(app.controller_filename, app.V, app.ctrl, app.regions)) {
-                    app.trigger_alert("Save Failed", "The controller file could not be written.",
-                                      "The path is unavailable.", "Choose a writable path.");
-                }
-            }
-        }
-        if (IsItemHovered()) {
-            SetTooltip("Save controller policy to %s", app.controller_filename);
-        }
-
-        SameLine(0, 6.0f);
-        if (outline_button("Load", ImVec2(52.0f, 24.0f))) {
-            if (load_controller_binary(app.controller_filename, app.V, app.ctrl, app.regions)) {
-                app.controller_ready = true;
-                app.arena_modified = false;
-                app.initial_regions = app.regions;
-            } else {
-                app.trigger_alert("Controller Rejected", "The file is incompatible, damaged or belongs to another arena.",
-                                  "Controllers must match the current model and regions.", "Run the solver to regenerate it.");
-            }
-        }
-        if (IsItemHovered()) {
-            SetTooltip("Load controller policy from %s", app.controller_filename);
-        }
     }
 
     end_card();
@@ -266,7 +236,7 @@ void render_right_cards(AppState& app, float width) {
                     "Controller Not Ready",
                     "Cannot plot routes without a valid controller in memory.",
                     "The reachability feedback policy is required to simulate routes.",
-                    "Click 'Run solver' or 'Load' first."
+                    "Click 'Run solver' first."
                 );
             }
         }
