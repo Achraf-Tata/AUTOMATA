@@ -165,7 +165,7 @@ The implementation is an academic prototype with the following items still under
 
 ## Team
 
-- Zakarya AZE-DINE
+- [Zakarya AZE-DINE](https://github.com/zakaryaazedine)
 - [Achraf TATA](https://github.com/Achraf-Tata)
 - [El Mehdi REGAGUI](https://github.com/Merega1)
 - [Adam YASSINE](https://github.com/deejavuuu)
