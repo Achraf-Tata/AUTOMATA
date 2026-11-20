@@ -31,6 +31,14 @@ void TransitionSystem::build_abstraction(
             const auto& ctrl = model.get_control(u);
             BoundingBox rbox = model.compute_reachable_box(box, ctrl);
 
+            // A partially out-of-domain image makes this input unavailable.
+            if (rbox.x_range.low < grid.domain.x_range.low ||
+                rbox.x_range.high > grid.domain.x_range.high ||
+                rbox.y_range.low < grid.domain.y_range.low ||
+                rbox.y_range.high > grid.domain.y_range.high) {
+                continue;
+            }
+
             // over-approximation: all cells touching the reachable box are potential successors
             vector<size_t> succs = grid.query_overlapping_cells(rbox);
             transitions[s][u] = move(succs);

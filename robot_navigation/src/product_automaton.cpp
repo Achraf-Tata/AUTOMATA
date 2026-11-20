@@ -1,4 +1,5 @@
 #include "product_automaton.hpp"
+#include "grid_quantizer.hpp"
 
 namespace symbolic::automaton {
 
@@ -91,14 +92,28 @@ ObservationSymbol ProductAutomaton::evaluate_point_observation(
     return FreeSpace;
 }
 
-// classify each grid cell by checking which region its center point falls in
+// Use the same whole-cell classification as the optimized solver.
 void ProductAutomaton::precompute_cell_labels(const GridPartition& grid) {
     cell_labels.resize(num_cells, FreeSpace);
+    cell_observation_masks.resize(num_cells);
+    const ::grid::RegionConfig config{
+        regions.waypoint_1.x_range.low, regions.waypoint_1.x_range.high,
+        regions.waypoint_1.y_range.low, regions.waypoint_1.y_range.high,
+        regions.waypoint_2.x_range.low, regions.waypoint_2.x_range.high,
+        regions.waypoint_2.y_range.low, regions.waypoint_2.y_range.high,
+        regions.goal.x_range.low, regions.goal.x_range.high,
+        regions.goal.y_range.low, regions.goal.y_range.high,
+        regions.obstacle.x_range.low, regions.obstacle.x_range.high,
+        regions.obstacle.y_range.low, regions.obstacle.y_range.high
+    };
 
     for (size_t s = 0; s < num_cells; ++s) {
         BoundingBox box = grid.get_cell_box(s);
-        auto c = box.center();
-        cell_labels[s] = evaluate_point_observation(c[0], c[1]);
+        const int label = ::grid::get_cell_region_label(
+            box.x_range.low, box.x_range.high, box.y_range.low, box.y_range.high, config);
+        cell_labels[s] = static_cast<ObservationSymbol>(label - 1);
+        cell_observation_masks[s] = ::grid::get_cell_observation_mask(
+            box.x_range.low, box.x_range.high, box.y_range.low, box.y_range.high, config);
     }
 }
 

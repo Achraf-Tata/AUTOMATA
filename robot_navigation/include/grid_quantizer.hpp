@@ -101,6 +101,12 @@ int flat_index(const GridCoord& grid_coordinate) noexcept;
 // 1 = Free space
 int get_region_label(double x, double y, const RegionConfig& config) noexcept;
 
+// Ambiguous cells are excluded, so every certified cell has one physical label.
+int get_cell_region_label(double x0, double x1, double y0, double y1,
+                          const RegionConfig& config) noexcept;
+uint8_t get_cell_observation_mask(double x0, double x1, double y0, double y1,
+                                  const RegionConfig& config) noexcept;
+
 // Precomputed range tables using the coordinate trick from Antoine Girard's paper.
 // Because the robot's motion equations can be split across X, Y, and angle theta,
 // we can calculate the possible next boxes along each dimension independently:

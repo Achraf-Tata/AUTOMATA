@@ -64,6 +64,40 @@ int get_region_label(double x, double y, const RegionConfig& config) noexcept {
     return 1; // Free space
 }
 
+int get_cell_region_label(double x0, double x1, double y0, double y1,
+                          const RegionConfig& config) noexcept {
+    const auto mask = get_cell_observation_mask(x0, x1, y0, y1, config);
+    for (int label = 1; label <= 5; ++label) {
+        if (mask == (1u << (label - 1))) return label;
+    }
+    return 5;
+}
+
+uint8_t get_cell_observation_mask(double x0, double x1, double y0, double y1,
+                                  const RegionConfig& config) noexcept {
+    const double regions[4][4] = {
+        {config.r1_x0, config.r1_x1, config.r1_y0, config.r1_y1},
+        {config.r2_x0, config.r2_x1, config.r2_y0, config.r2_y1},
+        {config.r3_x0, config.r3_x1, config.r3_y0, config.r3_y1},
+        {config.r4_x0, config.r4_x1, config.r4_y0, config.r4_y1}
+    };
+    uint8_t mask = 0;
+    bool fully_contained = false;
+    for (int i = 0; i < 4; ++i) {
+        const auto& region = regions[i];
+        const bool intersects = x0 <= region[1] && x1 >= region[0]
+                             && y0 <= region[3] && y1 >= region[2];
+        if (!intersects) continue;
+        const bool contained = x0 >= region[0] && x1 <= region[1]
+                            && y0 >= region[2] && y1 <= region[3];
+        if (i == 3) return 1u << 4;
+        mask |= static_cast<uint8_t>(1u << (i + 1));
+        fully_contained = fully_contained || contained;
+    }
+    if (!fully_contained) mask |= 1u;
+    return mask;
+}
+
 // Precomputes the 1D interval abstraction tables for a given disturbance bound and sampling period
 AbstractionTables precompute_abstraction_tables(double noise_bound, double dt) {
     AbstractionTables tab;

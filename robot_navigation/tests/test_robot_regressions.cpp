@@ -27,9 +27,26 @@ void test_workspace_exit() {
     require(grid::is_in_workspace({0.0, 10.0, 0.0}), "Workspace boundary is included");
 }
 
+void test_region_boundaries() {
+    grid::RegionConfig regions;
+    regions.r4_x0 = 1.02; regions.r4_x1 = 1.04;
+    regions.r4_y0 = 1.02; regions.r4_y1 = 1.04;
+    require(grid::get_region_label(1.05, 1.05, regions) == 1, "Expected free cell center");
+    require(grid::get_cell_region_label(1.0, 1.1, 1.0, 1.1, regions) == 5,
+            "An obstacle inside a cell was missed");
+    regions = {};
+    require(grid::get_cell_region_label(4.2, 4.3, 8.8, 8.9, regions) == 2,
+            "A cell entirely in R1 must retain its label");
+    require(grid::get_cell_region_label(3.95, 4.05, 8.8, 8.9, regions) == 5,
+            "A cell straddling R1 must be excluded");
+    require(grid::get_cell_region_label(2.9, 3.0, 4.0, 4.1, regions) == 5,
+            "Contact with the closed obstacle boundary must be excluded");
+}
+
 int main() {
     try {
         test_workspace_exit();
+        test_region_boundaries();
         std::cout << "Robot regression checks passed.\n";
         return 0;
     } catch (const std::exception& error) {

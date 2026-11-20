@@ -56,26 +56,8 @@ SynthesisResult BackwardReachabilitySolver::solve_product(const TransitionSystem
                     continue;
                 }
 
-                // Obstacle cells are dangerous, so we never want to go there
-                ObservationSymbol obs = automaton.get_cell_observation(s);
-                if (obs == Obstacle) {
+                if (automaton.cell_observation_masks[s] & (1u << 4)) {
                     continue;
-                }
-
-                AutomatonState q_adv = automaton.dfa.transition(q, obs);
-                if (q_adv == SinkTrap) {
-                    continue;
-                }
-
-                // If stepping into this cell completes the current mission milestone (e.g. hitting R1, R2, or Goal)
-                if (q_adv != q) {
-                    size_t p_adv = automaton.encode_product_index(s, q_adv);
-                    if (res.value_function[p_adv] < UNREACHABLE_COST) {
-                        res.value_function[p] = static_cast<double>(iter);
-                        res.feedback_policy[p] = res.feedback_policy[p_adv];
-                        ++newly_controlled;
-                        continue;
-                    }
                 }
 
                 // Check every possible move the robot could take (speed and turn)
@@ -89,19 +71,16 @@ SynthesisResult BackwardReachabilitySolver::solve_product(const TransitionSystem
                     bool all_safe = true;
 
                     for (size_t succ_s : succs) {
-                        ObservationSymbol succ_obs = automaton.get_cell_observation(succ_s);
-                        AutomatonState succ_q = automaton.dfa.transition(q_adv, succ_obs);
-
-                        if (succ_q == SinkTrap) {
-                            all_safe = false;
-                            break;
+                        for (int label = 0; label < 5; ++label) {
+                            if (!(automaton.cell_observation_masks[succ_s] & (1u << label))) continue;
+                            const auto next_q = automaton.dfa.transition(q, static_cast<ObservationSymbol>(label));
+                            const size_t next = automaton.encode_product_index(succ_s, next_q);
+                            if (prev_v[next] >= UNREACHABLE_COST) {
+                                all_safe = false;
+                                break;
+                            }
                         }
-
-                        size_t succ_p = automaton.encode_product_index(succ_s, succ_q);
-                        if (prev_v[succ_p] >= UNREACHABLE_COST) {
-                            all_safe = false;
-                            break;
-                        }
+                        if (!all_safe) break;
                     }
 
                     // If every outcome is safe and on track to win, record this as our chosen move!
@@ -154,154 +133,82 @@ SynthesisResult BackwardReachabilitySolver::solve_product(const TransitionSystem
 // Backward reachability solver operating on the full 1.5M state space.
 // Supports multi-core parallelization via OpenMP (#if defined(_OPENMP)) or sequential execution.
 int solve_reachability_backward_cpp(
-    vector<float>&                   V,
-    vector<uint8_t>&                 ctrl,
-    const ::grid::RegionConfig&      regions,
+    vector<float>& V,
+    vector<uint8_t>& ctrl,
+    const ::grid::RegionConfig& regions,
     const ::grid::AbstractionTables& tables,
-    function<void(int, float)>       callback,
-    bool                             use_parallel)
+    function<void(int, float)> callback,
+    bool use_parallel)
 {
     using namespace ::grid;
-    using namespace ::automaton;
-
-    uint8_t labels[GRID_CELLS_X][GRID_CELLS_Y];
-    for (int ix = 0; ix < GRID_CELLS_X; ++ix) {
-        double x = COORDINATE_MIN_X + (ix + 0.5) * CELL_WIDTH_DX;
-        for (int iy = 0; iy < GRID_CELLS_Y; ++iy) {
-            double y = COORDINATE_MIN_Y + (iy + 0.5) * CELL_WIDTH_DY;
-            labels[ix][iy] = static_cast<uint8_t>(get_region_label(x, y, regions));
+    uint8_t observations[NX][NY];
+    for (int ix = 0; ix < NX; ++ix) {
+        for (int iy = 0; iy < NY; ++iy) {
+            const double x = X_MIN + ix * DX;
+            const double y = Y_MIN + iy * DY;
+            observations[ix][iy] = get_cell_observation_mask(x, x + DX, y, y + DY, regions);
         }
     }
 
-    int iter = 0;
-    while (iter < 100) {
-        ++iter;
-        vector<float> prev_v = V;
-        int newly_controlled = 0;
-
-        auto process_row = [&](int ix) -> int {
+    for (int iteration = 1; iteration <= 100; ++iteration) {
+        const vector<float> previous = V;
+        int updates = 0;
+        auto process_row = [&](int ix) {
             int row_updates = 0;
-            for (int iy = 0; iy < GRID_CELLS_Y; ++iy) {
-                int obs = labels[ix][iy];
-
-                for (int ith = 0; ith < GRID_CELLS_THETA; ++ith) {
-                    int s = flat_index(ix, iy, ith);
-
-                    for (int q = 1; q <= 5; ++q) {
-                        int p = product_index(q, s);
-
-                        if (V[p] < 1e8f) {
-                            continue;
-                        }
-
-                        int q_next = dfa_transition(q, obs);
-                        int p_next = product_index(q_next, s);
-
-                        if (ctrl[p_next] != 0) {
-                            V[p] = static_cast<float>(iter);
-                            ++row_updates;
-                            continue;
-                        }
-
-                        uint8_t best_u = 0;
-
-                        for (int u = 0; u < 15; ++u) {
-                            if (!tables.get_valid1(ix, ith, u) ||
-                                !tables.get_valid2(iy, ith, u))
-                            {
-                                continue;
-                            }
-
-                            int sx_min  = tables.get_c1_min(ix, ith, u);
-                            int sx_max  = tables.get_c1_max(ix, ith, u);
-                            int sy_min  = tables.get_c2_min(iy, ith, u);
-                            int sy_max  = tables.get_c2_max(iy, ith, u);
-                            int sth_min = tables.get_c3_min(ith, u);
-                            int sth_max = tables.get_c3_max(ith, u);
-
-                            int q_base = (q_next - 1) * TOTAL_SPATIAL_CELLS;
-                            bool all_safe = true;
-
-                            if (sth_min <= sth_max) {
-                                for (int sx = sx_min; sx <= sx_max && all_safe; ++sx) {
-                                    int x_stride = q_base + sx * (GRID_CELLS_Y * GRID_CELLS_THETA);
-                                    for (int sy = sy_min; sy <= sy_max && all_safe; ++sy) {
-                                        int xy_stride = x_stride + sy * GRID_CELLS_THETA;
-                                        for (int sth = sth_min; sth <= sth_max; ++sth) {
-                                            if (prev_v[xy_stride + sth] > 1e7f) {
-                                                all_safe = false;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                for (int sx = sx_min; sx <= sx_max && all_safe; ++sx) {
-                                    int x_stride = q_base + sx * (GRID_CELLS_Y * GRID_CELLS_THETA);
-                                    for (int sy = sy_min; sy <= sy_max && all_safe; ++sy) {
-                                        int xy_stride = x_stride + sy * GRID_CELLS_THETA;
-                                        for (int sth = sth_min; sth < GRID_CELLS_THETA && all_safe; ++sth) {
-                                            if (prev_v[xy_stride + sth] > 1e7f) {
-                                                all_safe = false;
-                                                break;
-                                            }
-                                        }
-                                        for (int sth = 0; sth <= sth_max && all_safe; ++sth) {
-                                            if (prev_v[xy_stride + sth] > 1e7f) {
-                                                all_safe = false;
+            for (int iy = 0; iy < NY; ++iy) {
+                if (observations[ix][iy] & (1u << 4)) continue;
+                for (int heading = 0; heading < NTHETA; ++heading) {
+                    const int cell = flat_index(ix, iy, heading);
+                    // Memory already includes the current observation, as in equation (14).
+                    for (int memory = 1; memory <= 3; ++memory) {
+                        const int state = ::automaton::product_index(memory, cell);
+                        if (previous[state] < ::automaton::INF) continue;
+                        for (int input = 0; input < 15; ++input) {
+                            if (!tables.get_valid1(ix, heading, input) ||
+                                !tables.get_valid2(iy, heading, input)) continue;
+                            const int first_heading = tables.get_c3_min(heading, input);
+                            const int last_heading = tables.get_c3_max(heading, input);
+                            const int heading_count = (last_heading - first_heading + NTHETA) % NTHETA + 1;
+                            bool winning = true;
+                            for (int sx = tables.get_c1_min(ix, heading, input);
+                                 sx <= tables.get_c1_max(ix, heading, input) && winning; ++sx) {
+                                for (int sy = tables.get_c2_min(iy, heading, input);
+                                     sy <= tables.get_c2_max(iy, heading, input) && winning; ++sy) {
+                                    for (int label = 1; label <= 5 && winning; ++label) {
+                                        if (!(observations[sx][sy] & (1u << (label - 1)))) continue;
+                                        const int next_memory = ::automaton::dfa_transition(memory, label);
+                                        for (int offset = 0; offset < heading_count; ++offset) {
+                                            const int next_heading = (first_heading + offset) % NTHETA;
+                                            const int next = ::automaton::product_index(
+                                                next_memory, flat_index(sx, sy, next_heading));
+                                            if (previous[next] >= ::automaton::INF) {
+                                                winning = false;
                                                 break;
                                             }
                                         }
                                     }
                                 }
                             }
-
-                            if (all_safe) {
-                                best_u = static_cast<uint8_t>(u + 1);
+                            if (winning) {
+                                V[state] = static_cast<float>(iteration);
+                                ctrl[state] = static_cast<uint8_t>(input + 1);
+                                ++row_updates;
                                 break;
                             }
-                        }
-
-                        if (best_u != 0) {
-                            V[p] = static_cast<float>(iter);
-                            ctrl[p] = best_u;
-                            ++row_updates;
                         }
                     }
                 }
             }
             return row_updates;
         };
-
 #if defined(_OPENMP)
-        if (use_parallel) {
-            #pragma omp parallel for reduction(+:newly_controlled) schedule(static)
-            for (int ix = 0; ix < GRID_CELLS_X; ++ix) {
-                newly_controlled += process_row(ix);
-            }
-        } else
+        #pragma omp parallel for reduction(+:updates) schedule(static) if(use_parallel)
 #endif
-        {
-            for (int ix = 0; ix < GRID_CELLS_X; ++ix) {
-                newly_controlled += process_row(ix);
-            }
-        }
-
-        if (callback) {
-            // When running sequentially, add a 50ms pacing delay so the user can watch the progress bar;
-            // In parallel mode, no artificial delay is needed (runs at full multi-core speed)
-            if (!use_parallel) {
-                this_thread::sleep_for(chrono::milliseconds(50));
-            }
-            callback(iter, static_cast<float>(newly_controlled));
-        }
-
-        if (newly_controlled == 0) {
-            break;
-        }
+        for (int ix = 0; ix < NX; ++ix) updates += process_row(ix);
+        if (callback) callback(iteration, static_cast<float>(updates));
+        if (updates == 0) return iteration;
     }
-
-    return iter;
+    return 100;
 }
 
 // Saves the synthesized controller table to disk in binary format
