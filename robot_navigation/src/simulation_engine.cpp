@@ -303,10 +303,11 @@ void trigger_synthesis(AppState& app) {
     app.solve_progress = 0.0f;
     app.solve_changes = 0;
     app.solve_iterations = 0;
-    app.synthesis_progress = make_shared<SynthesisProgress>();
-    const auto progress = app.synthesis_progress;
-    // The worker owns snapshots; GUI edits cannot modify an active calculation.
-    app.synthesis_job = async(launch::async,
+    try {
+        app.synthesis_progress = make_shared<SynthesisProgress>();
+        const auto progress = app.synthesis_progress;
+        // The worker owns snapshots; GUI edits cannot modify an active calculation.
+        app.synthesis_job = async(launch::async,
         [regions = app.regions, tables = app.abs_tables, parallel = app.use_parallel, progress]() {
             SynthesisOutput output;
             output.regions = regions;
@@ -322,6 +323,11 @@ void trigger_synthesis(AppState& app) {
             output.duration = duration<float>(steady_clock::now() - start).count();
             return output;
         });
+    } catch (const exception& error) {
+        app.solving = false;
+        app.trigger_alert("Synthesis Failed", error.what(),
+                          "The background calculation could not start.", "Run the solver again.");
+    }
 }
 
 bool poll_synthesis(AppState& app, bool wait) {
@@ -335,6 +341,11 @@ bool poll_synthesis(AppState& app, bool wait) {
     try {
         auto output = app.synthesis_job.get();
         if (app.synthesis_progress->cancelled.load() || output.iterations < 0) return false;
+        if (output.iterations >= 100) {
+            app.trigger_alert("Synthesis Limit Reached", "The solver reached its iteration limit.",
+                              "A completed fixed point was not confirmed.", "Review the arena and run the solver again.");
+            return false;
+        }
         if (!(output.regions == app.regions)) {
             app.trigger_alert("Arena Changed", "The completed controller belongs to the previous arena.",
                               "Regions changed during synthesis.", "Run the solver for the current arena.");

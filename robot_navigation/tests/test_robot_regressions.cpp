@@ -119,6 +119,22 @@ void test_controller_configuration() {
     std::filesystem::remove(file);
 }
 
+void test_incomplete_synthesis() {
+    robot_nav::AppState app;
+    robot_nav::init_app_state(app);
+    app.solving = true;
+    app.synthesis_progress = std::make_shared<robot_nav::SynthesisProgress>();
+    std::promise<robot_nav::SynthesisOutput> result;
+    app.synthesis_job = result.get_future();
+    robot_nav::SynthesisOutput output;
+    output.regions = app.regions;
+    output.iterations = 100;
+    result.set_value(std::move(output));
+    require(!robot_nav::engine::poll_synthesis(app, true), "An unfinished synthesis was published");
+    require(!app.solving && !app.controller_ready && app.show_alert_modal,
+            "An unfinished synthesis was not reported to the user");
+}
+
 int main() {
     try {
         test_workspace_exit();
@@ -126,6 +142,7 @@ int main() {
         test_goal_on_last_step();
         test_background_lifetime();
         test_controller_configuration();
+        test_incomplete_synthesis();
         std::cout << "Robot regression checks passed.\n";
         return 0;
     } catch (const std::exception& error) {
