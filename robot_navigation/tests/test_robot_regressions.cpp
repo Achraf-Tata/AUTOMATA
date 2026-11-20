@@ -1,6 +1,9 @@
 #include "simulation_engine.hpp"
+#include "backward_reachability.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
 
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
@@ -65,11 +68,46 @@ void test_background_lifetime() {
     }
 }
 
+void test_controller_configuration() {
+    const auto file = std::filesystem::temp_directory_path() / "automata-controller-regression.bin";
+    const std::string filename = file.string();
+    auto values = automaton::init_value_function();
+    auto controls = automaton::init_controller();
+    grid::RegionConfig regions;
+    require(solver::save_controller_binary(filename.c_str(), values, controls, regions), "Save failed");
+    require(solver::save_controller_binary(filename.c_str(), values, controls, regions), "Atomic replacement failed");
+    std::vector<float> loaded_values{42};
+    std::vector<uint8_t> loaded_controls{7};
+    regions.r1_x0 += 0.1;
+    require(!solver::load_controller_binary(filename.c_str(), loaded_values, loaded_controls, regions),
+            "A controller for a different arena was accepted");
+    require(loaded_values == std::vector<float>{42} && loaded_controls == std::vector<uint8_t>{7},
+            "Failed loading modified the active controller");
+    regions = {};
+    require(solver::load_controller_binary(filename.c_str(), loaded_values, loaded_controls, regions), "Matching file rejected");
+    require(values == loaded_values && controls == loaded_controls, "Controller round trip changed data");
+    {
+        std::fstream damaged(file, std::ios::binary | std::ios::in | std::ios::out);
+        damaged.seekp(-1, std::ios::end);
+        damaged.put(1);
+    }
+    require(!solver::load_controller_binary(filename.c_str(), loaded_values, loaded_controls), "Payload corruption accepted");
+    std::filesystem::resize_file(file, 20);
+    require(!solver::load_controller_binary(filename.c_str(), loaded_values, loaded_controls), "Truncated file accepted");
+    {
+        std::ofstream legacy(file, std::ios::binary | std::ios::trunc);
+        legacy.write("CTRL1.00", 8);
+    }
+    require(!solver::load_controller_binary(filename.c_str(), loaded_values, loaded_controls), "Unverifiable legacy file accepted");
+    std::filesystem::remove(file);
+}
+
 int main() {
     try {
         test_workspace_exit();
         test_region_boundaries();
         test_background_lifetime();
+        test_controller_configuration();
         std::cout << "Robot regression checks passed.\n";
         return 0;
     } catch (const std::exception& error) {

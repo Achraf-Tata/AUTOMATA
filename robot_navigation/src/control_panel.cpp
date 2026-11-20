@@ -81,7 +81,10 @@ void render_right_cards(AppState& app, float width) {
         SameLine(avail_w - 110.0f);
         if (outline_button("Save", ImVec2(52.0f, 24.0f))) {
             if (app.controller_ready) {
-                save_controller_binary(app.controller_filename, app.V, app.ctrl);
+                if (!save_controller_binary(app.controller_filename, app.V, app.ctrl, app.regions)) {
+                    app.trigger_alert("Save Failed", "The controller file could not be written.",
+                                      "The path is unavailable.", "Choose a writable path.");
+                }
             }
         }
         if (IsItemHovered()) {
@@ -90,8 +93,13 @@ void render_right_cards(AppState& app, float width) {
 
         SameLine(0, 6.0f);
         if (outline_button("Load", ImVec2(52.0f, 24.0f))) {
-            if (load_controller_binary(app.controller_filename, app.V, app.ctrl)) {
+            if (load_controller_binary(app.controller_filename, app.V, app.ctrl, app.regions)) {
                 app.controller_ready = true;
+                app.arena_modified = false;
+                app.initial_regions = app.regions;
+            } else {
+                app.trigger_alert("Controller Rejected", "The file is incompatible, damaged or belongs to another arena.",
+                                  "Controllers must match the current model and regions.", "Run the solver to regenerate it.");
             }
         }
         if (IsItemHovered()) {

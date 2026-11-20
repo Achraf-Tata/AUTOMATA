@@ -57,12 +57,14 @@ int solve_reachability_backward_cpp(
 // Saves the synthesized value function and controller policy to a binary file.
 bool save_controller_binary(const char*                  file_path,
                             const std::vector<float>&   V,
-                            const std::vector<uint8_t>& ctrl);
+                            const std::vector<uint8_t>& ctrl,
+                            const ::grid::RegionConfig& regions = {});
 
 // Loads a previously computed controller from a binary file.
 bool load_controller_binary(const char*             file_path,
                             std::vector<float>&    V,
-                            std::vector<uint8_t>&  ctrl);
+                            std::vector<uint8_t>&  ctrl,
+                            const ::grid::RegionConfig& regions = {});
 
 } // namespace symbolic::synthesis
 

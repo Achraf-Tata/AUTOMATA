@@ -107,7 +107,7 @@ int main() {
     };
 
     for (const char* candidate_path : fallback_controller_paths) {
-        if (load_controller_binary(candidate_path, app.V, app.ctrl)) {
+        if (load_controller_binary(candidate_path, app.V, app.ctrl, app.regions)) {
             app.controller_ready = true;
             snprintf(app.controller_filename, sizeof(app.controller_filename), "%s", candidate_path);
             break;

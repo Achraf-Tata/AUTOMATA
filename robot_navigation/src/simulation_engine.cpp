@@ -343,7 +343,10 @@ bool poll_synthesis(AppState& app, bool wait) {
         app.controller_ready = true;
         app.arena_modified = false;
         app.initial_regions = output.regions;
-        save_controller_binary(app.controller_filename, app.V, app.ctrl);
+        if (!save_controller_binary(app.controller_filename, app.V, app.ctrl, app.regions)) {
+            app.trigger_alert("Controller Save Failed", "The controller is ready in memory but could not be saved.",
+                              "The destination file could not be written.", "Choose a writable controller path.");
+        }
         if (app.auto_simulate_after_solve) {
             app.auto_simulate_after_solve = false;
             run_simulation(app);

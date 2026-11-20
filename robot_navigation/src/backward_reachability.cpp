@@ -5,6 +5,14 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <filesystem>
+#include <cmath>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -213,39 +221,101 @@ int solve_reachability_backward_cpp(
     return 100;
 }
 
-// Saves the synthesized controller table to disk in binary format
-bool save_controller_binary(const char*            file_path,
-                            const vector<float>&   V,
-                            const vector<uint8_t>& ctrl)
-{
-    ofstream out(file_path, ios::binary);
-    if (!out) return false;
-    out.write("CTRL1.00", 8);
-    uint32_t total = static_cast<uint32_t>(::automaton::NTOTAL);
-    out.write(reinterpret_cast<const char*>(&total), 4);
-    out.write(reinterpret_cast<const char*>(V.data()), total * sizeof(float));
-    out.write(reinterpret_cast<const char*>(ctrl.data()), total * sizeof(uint8_t));
-    return out.good();
+namespace {
+vector<double> controller_configuration(const ::grid::RegionConfig& r) {
+    vector<double> configuration = {
+        ::grid::NX, ::grid::NY, ::grid::NTHETA,
+        ::grid::X_MIN, ::grid::X_MAX, ::grid::Y_MIN, ::grid::Y_MAX,
+        ::grid::TH_MIN, ::grid::TH_MAX, 1.0, 0.05,
+        r.r1_x0, r.r1_x1, r.r1_y0, r.r1_y1,
+        r.r2_x0, r.r2_x1, r.r2_y0, r.r2_y1,
+        r.r3_x0, r.r3_x1, r.r3_y0, r.r3_y1,
+        r.r4_x0, r.r4_x1, r.r4_y0, r.r4_y1
+    };
+    for (const auto& input : ::unicycle::ALL_CONTROLS) {
+        configuration.push_back(input.v);
+        configuration.push_back(input.w);
+    }
+    return configuration;
 }
 
-// Loads a precomputed controller table from disk
-bool load_controller_binary(const char*       file_path,
-                            vector<float>&    V,
-                            vector<uint8_t>&  ctrl)
-{
-    ifstream in(file_path, ios::binary);
-    if (!in) return false;
-    char magic[8];
-    in.read(magic, 8);
-    if (memcmp(magic, "CTRL1.00", 8) != 0) return false;
-    uint32_t total = 0;
-    in.read(reinterpret_cast<char*>(&total), 4);
-    if (total != static_cast<uint32_t>(::automaton::NTOTAL)) return false;
-    V.resize(total);
-    ctrl.resize(total);
-    in.read(reinterpret_cast<char*>(V.data()), total * sizeof(float));
-    in.read(reinterpret_cast<char*>(ctrl.data()), total * sizeof(uint8_t));
-    return in.good();
+uint64_t controller_checksum(const vector<float>& values, const vector<uint8_t>& controls) {
+    uint64_t hash = 14695981039346656037ull;
+    auto add_bytes = [&hash](const unsigned char* bytes, size_t count) {
+        for (size_t i = 0; i < count; ++i) {
+            hash ^= bytes[i];
+            hash *= 1099511628211ull;
+        }
+    };
+    add_bytes(reinterpret_cast<const unsigned char*>(values.data()), values.size() * sizeof(float));
+    add_bytes(controls.data(), controls.size());
+    return hash;
+}
+}
+
+bool save_controller_binary(const char* file_path, const vector<float>& values,
+                            const vector<uint8_t>& controls, const ::grid::RegionConfig& regions) {
+    if (values.size() != ::automaton::NTOTAL || controls.size() != values.size()) return false;
+    const auto configuration = controller_configuration(regions);
+    const uint32_t count = static_cast<uint32_t>(values.size());
+    const uint64_t checksum = controller_checksum(values, controls);
+    const filesystem::path destination(file_path);
+    auto temporary = destination;
+    temporary += ".tmp." + to_string(steady_clock::now().time_since_epoch().count());
+    ofstream output(temporary, ios::binary | ios::trunc);
+    if (!output) return false;
+    output.write("CTRL2.00", 8);
+    output.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    output.write(reinterpret_cast<const char*>(configuration.data()), configuration.size() * sizeof(double));
+    output.write(reinterpret_cast<const char*>(&checksum), sizeof(checksum));
+    output.write(reinterpret_cast<const char*>(values.data()), values.size() * sizeof(float));
+    output.write(reinterpret_cast<const char*>(controls.data()), controls.size());
+    output.close();
+    bool replaced = false;
+    if (output.good()) {
+#ifdef _WIN32
+        replaced = MoveFileExW(temporary.c_str(), destination.c_str(),
+                               MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+        error_code error;
+        filesystem::rename(temporary, destination, error);
+        replaced = !error;
+#endif
+    }
+    if (!replaced) {
+        error_code ignored;
+        filesystem::remove(temporary, ignored);
+    }
+    return replaced;
+}
+
+bool load_controller_binary(const char* file_path, vector<float>& values,
+                            vector<uint8_t>& controls, const ::grid::RegionConfig& regions) {
+    ifstream input(file_path, ios::binary);
+    char magic[8]{};
+    uint32_t count = 0;
+    input.read(magic, sizeof(magic));
+    input.read(reinterpret_cast<char*>(&count), sizeof(count));
+    if (!input || memcmp(magic, "CTRL2.00", 8) != 0 || count != ::automaton::NTOTAL) return false;
+    const auto expected = controller_configuration(regions);
+    vector<double> configuration(expected.size());
+    uint64_t checksum = 0;
+    input.read(reinterpret_cast<char*>(configuration.data()), configuration.size() * sizeof(double));
+    input.read(reinterpret_cast<char*>(&checksum), sizeof(checksum));
+    if (!input || configuration != expected) return false;
+    vector<float> loaded_values(count);
+    vector<uint8_t> loaded_controls(count);
+    input.read(reinterpret_cast<char*>(loaded_values.data()), count * sizeof(float));
+    input.read(reinterpret_cast<char*>(loaded_controls.data()), count);
+    if (!input || input.peek() != char_traits<char>::eof()) return false;
+    if (checksum != controller_checksum(loaded_values, loaded_controls)) return false;
+    for (size_t i = 0; i < count; ++i) {
+        if (!isfinite(loaded_values[i]) || loaded_values[i] < 0 ||
+            loaded_values[i] > ::automaton::INF || loaded_controls[i] > 15) return false;
+    }
+    values.swap(loaded_values);
+    controls.swap(loaded_controls);
+    return true;
 }
 
 } // namespace symbolic::synthesis
