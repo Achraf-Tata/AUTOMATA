@@ -103,10 +103,7 @@ int main() {
         "controller.bin",
         "../controller.bin",
         "../../controller.bin",
-        "academic_prototype/controller.bin",
-        "1_robot_navigation/controller.bin",
-        "F:/AUTOMATA/controller.bin",
-        "F:/AUTOMATA/academic_prototype/controller.bin"
+        "robot_navigation/controller.bin"
     };
 
     for (const char* candidate_path : fallback_controller_paths) {
