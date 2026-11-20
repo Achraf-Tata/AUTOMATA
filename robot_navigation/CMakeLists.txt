@@ -41,13 +41,15 @@ endif()
 add_executable(prototype_navigation src/main.cpp)
 target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
+add_library(robot_runtime STATIC src/app_state.cpp src/simulation_engine.cpp)
+target_link_libraries(robot_runtime PUBLIC prototype_core)
+
 # Unit Tests Executable
-add_executable(test_prototype
-    tests/test_prototype.cpp
-    src/simulation_engine.cpp
-    src/app_state.cpp
-)
-target_link_libraries(test_prototype PRIVATE prototype_core)
+add_executable(test_prototype tests/test_prototype.cpp)
+target_link_libraries(test_prototype PRIVATE robot_runtime)
+
+add_executable(test_robot_regressions tests/test_robot_regressions.cpp)
+target_link_libraries(test_robot_regressions PRIVATE robot_runtime)
 
 # ---------------------------------------------------------------------------
 # GUI Dependencies: OpenGL, GLFW, Dear ImGui
@@ -108,12 +110,10 @@ target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
 # ---------------------------------------------------------------------------
 set(GUI_SOURCES
     src/main_gui.cpp
-    src/app_state.cpp
     src/ui_theme.cpp
     src/arena_view.cpp
     src/control_panel.cpp
     src/popup_dialogs.cpp
-    src/simulation_engine.cpp
 )
 
 add_executable(prototype_gui
@@ -132,7 +132,7 @@ target_include_directories(prototype_gui PRIVATE
 )
 
 target_link_libraries(prototype_gui PRIVATE
-    prototype_core
+    robot_runtime
     OpenGL::GL
     glfw
     imgui_lib

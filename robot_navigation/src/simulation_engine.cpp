@@ -55,8 +55,7 @@ bool sim_step_once(AppState& app) {
     }
 
     // Boundary check: ensure the robot stays within the 10x10 meter workspace
-    if (app.sim_robot_pos.x < 0.0 || app.sim_robot_pos.x > 10.0 ||
-        app.sim_robot_pos.y < 0.0 || app.sim_robot_pos.y > 10.0) {
+    if (!is_in_workspace(app.sim_robot_pos)) {
         app.sim_running = false;
         app.has_run_result = true;
         app.last_status = OutOfBounds;
@@ -153,11 +152,18 @@ bool sim_step_once(AppState& app) {
 
     // Discrete-time forward integration: x(k+1) = f(x(k), u(k)) + w(k)
     app.sim_robot_pos = step(app.sim_robot_pos, u, noise, 1.0);
-    app.sim_robot_pos.x = clamp(app.sim_robot_pos.x, 0.0, 10.0);
-    app.sim_robot_pos.y = clamp(app.sim_robot_pos.y, 0.0, 10.0);
 
     app.active_trajectory.push_back(app.sim_robot_pos);
     ++app.sim_step;
+
+    if (!is_in_workspace(app.sim_robot_pos)) {
+        app.sim_running = false;
+        app.has_run_result = true;
+        app.last_status = OutOfBounds;
+        app.final_state = app.sim_robot_pos;
+        app.final_step = app.sim_step;
+        return false;
+    }
 
     return true;
 }
@@ -203,7 +209,7 @@ static AppState::BundleRoute simulate_single_bundle_route(const AppState& app, c
     uniform_real_distribution<double> dist(-0.05, 0.05);
 
     for (int step_idx = 0; step_idx < app.sim_max_steps; ++step_idx) {
-        if (s.x < 0.0 || s.x > 10.0 || s.y < 0.0 || s.y > 10.0) {
+        if (!is_in_workspace(s)) {
             route.status = OutOfBounds;
             break;
         }
@@ -243,9 +249,11 @@ static AppState::BundleRoute simulate_single_bundle_route(const AppState& app, c
         const Control& u = ALL_CONTROLS[sigma - 1];
         array<double, 3> noise = {dist(rng), dist(rng), dist(rng)};
         s = step(s, u, noise, 1.0);
-        s.x = clamp(s.x, 0.0, 10.0);
-        s.y = clamp(s.y, 0.0, 10.0);
         route.path.push_back(s);
+        if (!is_in_workspace(s)) {
+            route.status = OutOfBounds;
+            break;
+        }
     }
 
     if (route.status == Idle && route.path.size() >= static_cast<size_t>(app.sim_max_steps)) {

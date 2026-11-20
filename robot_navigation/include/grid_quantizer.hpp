@@ -80,6 +80,12 @@ struct GridCoord {
 // Quantizes continuous robot state (x, y, theta) into discrete integer cell coordinates
 GridCoord quantize(const State& continuous_state) noexcept;
 
+inline bool is_in_workspace(const State& state) noexcept {
+    return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.theta)
+        && state.x >= X_MIN && state.x <= X_MAX
+        && state.y >= Y_MIN && state.y <= Y_MAX;
+}
+
 // Computes the continuous center position of a discrete grid cell
 State cell_center(const GridCoord& grid_coordinate) noexcept;
 
