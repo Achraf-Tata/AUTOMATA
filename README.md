@@ -31,11 +31,11 @@ The robot application follows the numerical example in *Approches symboliques po
 ### Robot navigation
 
 - **Interactive arena** with draggable and resizable regions, robot position and heading controls, and trajectory visualization.
-- **Symbolic abstraction** over a 100 × 100 × 30 spatial grid with 15 discrete control inputs in the graphical application.
+- **Shared symbolic model** over a 100 × 100 × 30 spatial grid with 15 discrete control inputs in the graphical application and default console demo.
 - **Mission tracking** with a deterministic finite automaton that records the waypoint already visited.
 - **Backward reachability** over 1.5 million combinations of spatial cells and automaton states, with optional OpenMP parallelism.
 - **Simulation controls** for step-by-step and continuous execution, bounded disturbances, and bundles of perturbed trajectories.
-- **Controller persistence** through binary policy tables.
+- **Controller persistence** with model and arena matching, payload checksums, and atomic file replacement.
 - **Console prototype** and tests for the model, abstraction, automaton, synthesis, and simulation.
 
 ### Building temperature control
@@ -94,17 +94,17 @@ On Windows with Visual Studio, launch the GUI and tests with PowerShell.
 
 ```powershell
 .\build\robot\Debug\prototype_gui.exe
-.\build\robot\Debug\test_prototype.exe
+ctest --test-dir build/robot -C Debug --output-on-failure
 ```
 
 With Ninja or Unix Makefiles, executables are placed directly in `build/robot`. On Linux, run
 
 ```sh
 ./build/robot/prototype_gui
-./build/robot/test_prototype
+ctest --test-dir build/robot --output-on-failure
 ```
 
-For a Windows Ninja build, use `build\robot\prototype_gui.exe` and `build\robot\test_prototype.exe`.
+For a Windows Ninja build, launch `build\robot\prototype_gui.exe` and use the same CTest command. Run `prototype_navigation` without arguments for the full-resolution console demo.
 
 In the GUI, configure the starting pose and regions, select **Run solver**, then start the simulation. Recompute the controller after editing the arena. [Robot model, controls and implementation notes](robot_navigation/README.md)
 
@@ -154,14 +154,18 @@ AUTOMATA/
 
 ## Validation and current status
 
-The current test suites cover interval calculations, grid indexing, automaton transitions, safety invariance, robot controller synthesis and serialization, disturbed robot trajectories, and coupled room simulations. The robot suite includes a full-resolution synthesis and a 50-run trajectory bundle. The building suite includes an eight-room simulation over 2,000 sampling steps.
+All five robot CTest groups and all four building test sections passed in a Windows GCC/OpenMP Debug build. The robot suite covers interval calculations, automaton transitions, safety invariance, full-resolution synthesis, persistence, worker lifetime, and closed-loop simulation.
 
-The implementation is an academic prototype with the following items still under review.
+- The robot console and GUI now use the same controls and default full-resolution solver. The default console mission succeeds in 22 steps without disturbances.
+- Whole-cell observation sets account for regions crossing grid boundaries. Cells touching the closed obstacle are excluded, and commands with possible successors outside the workspace are rejected. Simulation reports actual exits without changing the trajectory.
+- Every possible symbolic successor of the selected policy has a strictly decreasing reachability rank for all 623,272 nonterminal winning states on the default map and 627,871 on a map with shifted, off-grid region boundaries. Sequential and parallel tables match exactly.
+- Each of the three reference starting poses reaches the goal, with 50/50 disturbed runs per pose. The GUI also passed synthesis, simulation, trajectory bundle, and region-edit checks.
+- Controllers are published on the GUI thread from independent worker snapshots. Saved policies are checked against the current configuration; incompatible or damaged files leave active tables unchanged.
+- The building suite still passes, including an eight-room simulation over 2,000 sampling steps. The building implementation is unchanged by the robot fixes.
 
-- The robot console prototype uses different speed samples and a coarser default grid than the GUI. Its default start currently reports an uncontrollable state.
-- Robot region labeling uses cell centers. Region edits that cross cell boundaries need further validation of the abstraction.
-- Robot simulations currently clamp positions at the workspace boundary. Boundary handling needs to be aligned with the mathematical model.
-- Saved robot controllers need configuration matching, and background synthesis needs synchronized access to shared application state.
+The policy certificate checks the constructed symbolic transition relation. Sampled concrete cell and disturbance corners provide an additional check of the interval bounds. [Robot validation details](robot_navigation/README.md#validation)
+
+**Existing robot installations:** the `CTRL2.00` cache replaces the previous format. Select **Run solver** once to regenerate an old `controller.bin`.
 
 ## Team
 

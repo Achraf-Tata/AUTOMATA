@@ -19,7 +19,7 @@ void run_simulation(AppState& app);
 void generate_trajectory_bundle(AppState& app, int num_runs = 50);
 
 // Spawns a background worker thread to run the backward reachability solver.
-// This prevents freezing the ImGui render loop during the 35 synthesis iterations,
+// This prevents freezing the ImGui render loop during synthesis,
 // updating iteration count and progress bar in real time until the controller is saved.
 void trigger_synthesis(AppState& app);
 

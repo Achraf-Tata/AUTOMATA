@@ -304,7 +304,7 @@ void test_safety_game_algorithm() {
 
 // Tests 7, 8, and 9: Full-scale system verification.
 // Test 7: Solves all 1,500,000 combinations sequentially with backward_reachability.cpp
-//         and confirms it completes in exactly 35 rounds as shown in the paper.
+//         and checks convergence on the full-resolution abstraction.
 // Test 8: Checks saving and loading the 1.5 million move table and step counts to/from a binary file.
 // Test 9: Runs the virtual robot using the loaded moves and confirms it reaches Goal R3
 //         in the expected number of steps (18-25 steps).
