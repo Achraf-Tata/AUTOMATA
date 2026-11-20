@@ -52,6 +52,19 @@ target_link_libraries(test_prototype PRIVATE robot_runtime)
 add_executable(test_robot_regressions tests/test_robot_regressions.cpp)
 target_link_libraries(test_robot_regressions PRIVATE robot_runtime)
 
+add_executable(test_robot_certificate tests/test_robot_certificate.cpp)
+target_link_libraries(test_robot_certificate PRIVATE robot_runtime)
+
+enable_testing()
+add_test(NAME robot_prototype COMMAND test_prototype)
+add_test(NAME robot_regressions COMMAND test_robot_regressions)
+add_test(NAME robot_certificate COMMAND test_robot_certificate)
+add_test(NAME robot_console COMMAND prototype_navigation)
+add_test(NAME robot_coarse_grid COMMAND prototype_navigation 10 10 4)
+set_tests_properties(robot_coarse_grid PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(robot_prototype robot_regressions robot_certificate robot_console robot_coarse_grid
+    PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=4" TIMEOUT 180)
+
 # ---------------------------------------------------------------------------
 # GUI Dependencies: OpenGL, GLFW, Dear ImGui
 # ---------------------------------------------------------------------------

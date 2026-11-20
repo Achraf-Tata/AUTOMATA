@@ -46,6 +46,23 @@ void test_region_boundaries() {
             "Contact with the closed obstacle boundary must be excluded");
 }
 
+void test_goal_on_last_step() {
+    robot_nav::AppState app;
+    robot_nav::init_app_state(app);
+    app.regions.r1_x0 = 0.5; app.regions.r1_x1 = 1.5;
+    app.regions.r1_y0 = 0.5; app.regions.r1_y1 = 1.5;
+    app.robot_start = {1.2, 1.0, 0.0};
+    app.sim_max_steps = 1;
+    app.sim_with_noise = false;
+    app.ctrl.assign(automaton::NTOTAL, 9);
+    app.controller_ready = true;
+    robot_nav::engine::run_simulation(app);
+    require(app.last_status == robot_nav::RunStatus::GoalReached && app.sim_step == 1,
+            "A goal reached on the last allowed step was reported as timeout");
+    robot_nav::engine::generate_trajectory_bundle(app, 5);
+    require(app.bundle_success_count == 5, "Bundle missed last-step arrivals");
+}
+
 void test_background_lifetime() {
     robot_nav::AppState app;
     robot_nav::init_app_state(app);
@@ -106,6 +123,7 @@ int main() {
     try {
         test_workspace_exit();
         test_region_boundaries();
+        test_goal_on_last_step();
         test_background_lifetime();
         test_controller_configuration();
         std::cout << "Robot regression checks passed.\n";

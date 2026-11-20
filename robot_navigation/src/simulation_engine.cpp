@@ -39,21 +39,6 @@ bool sim_step_once(AppState& app) {
         return false;
     }
 
-    if (app.sim_step >= app.sim_max_steps) {
-        app.sim_running = false;
-        app.has_run_result = true;
-        app.last_status = Timeout;
-        app.final_state = app.sim_robot_pos;
-        app.final_step = app.sim_step;
-        app.trigger_alert(
-            "Horizon Limit Reached",
-            "The robot reached the maximum allotted step limit before reaching Goal R3.",
-            "The time horizon limit expired before completing the waypoint specification.",
-            "Increase the Horizon limit in the Simulation panel or start from an initial pose with lower value function cost."
-        );
-        return false;
-    }
-
     // Boundary check: ensure the robot stays within the 10x10 meter workspace
     if (!is_in_workspace(app.sim_robot_pos)) {
         app.sim_running = false;
@@ -115,6 +100,21 @@ bool sim_step_once(AppState& app) {
             "Mutually exclusive waypoint requirement violated (both R1 and R2 visited).",
             "The DFA transitioned to sink trap state q5 because both waypoint regions were visited before Goal R3.",
             "Follow the synthesized policy which steers the unicycle toward one exclusive waypoint."
+        );
+        return false;
+    }
+
+    if (app.sim_step >= app.sim_max_steps) {
+        app.sim_running = false;
+        app.has_run_result = true;
+        app.last_status = Timeout;
+        app.final_state = app.sim_robot_pos;
+        app.final_step = app.sim_step;
+        app.trigger_alert(
+            "Horizon Limit Reached",
+            "The robot reached the maximum allotted step limit before reaching Goal R3.",
+            "The time horizon limit expired before completing the waypoint specification.",
+            "Increase the Horizon limit in the Simulation panel or start from an initial pose with lower value function cost."
         );
         return false;
     }
@@ -188,7 +188,7 @@ void run_simulation(AppState& app) {
     app.active_trajectory.clear();
     app.active_trajectory.push_back(app.robot_start);
 
-    for (int step = 0; step < app.sim_max_steps; ++step) {
+    for (int step = 0; step <= app.sim_max_steps; ++step) {
         app.sim_running = true;
         if (!sim_step_once(app)) {
             break;
@@ -208,7 +208,7 @@ static AppState::BundleRoute simulate_single_bundle_route(const AppState& app, c
     int q = 1;
     uniform_real_distribution<double> dist(-0.05, 0.05);
 
-    for (int step_idx = 0; step_idx < app.sim_max_steps; ++step_idx) {
+    for (int step_idx = 0; step_idx <= app.sim_max_steps; ++step_idx) {
         if (!is_in_workspace(s)) {
             route.status = OutOfBounds;
             break;
@@ -235,6 +235,11 @@ static AppState::BundleRoute simulate_single_bundle_route(const AppState& app, c
         }
         if (q == 5) {
             route.status = ExclusivityViolation;
+            break;
+        }
+
+        if (step_idx == app.sim_max_steps) {
+            route.status = Timeout;
             break;
         }
 
