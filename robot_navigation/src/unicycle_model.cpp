@@ -21,13 +21,8 @@ UnicycleModel::UnicycleModel(double dt_sec, double noise)
 // create the discrete set of (v, w) controls: 3 velocities x 5 steering rates = 15 pairs
 void UnicycleModel::initialize_discrete_controls() {
     controls.clear();
-    const double velocities[] = { 0.25, 0.50, 0.75 };
-    const double turn_rates[] = { -1.0, -0.5, 0.0, 0.5, 1.0 };
-
-    for (double v : velocities) {
-        for (double w : turn_rates) {
-            controls.push_back({ v, w });
-        }
+    for (const auto& control : ::unicycle::ALL_CONTROLS) {
+        controls.push_back({control.v, control.w});
     }
 }
 

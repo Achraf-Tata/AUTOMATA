@@ -43,6 +43,7 @@ target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
 add_library(robot_runtime STATIC src/app_state.cpp src/simulation_engine.cpp)
 target_link_libraries(robot_runtime PUBLIC prototype_core)
+target_link_libraries(prototype_navigation PRIVATE robot_runtime)
 
 # Unit Tests Executable
 add_executable(test_prototype tests/test_prototype.cpp)
