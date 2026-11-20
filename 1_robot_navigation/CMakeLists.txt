@@ -6,9 +6,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    add_compile_options(/W4 /permissive- /utf-8 /O2)
+    add_compile_options(/O2 /arch:AVX2 /W4 /MP /utf-8 /permissive-)
+    add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+    add_link_options(/STACK:8388608)
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -O3)
+    add_compile_options(-O3 -march=native -Wall -Wextra -Wpedantic)
 endif()
 
 set(PROTOTYPE_SOURCES
@@ -27,6 +29,12 @@ set(PROTOTYPE_SOURCES
 
 add_library(prototype_core STATIC ${PROTOTYPE_SOURCES})
 target_include_directories(prototype_core PUBLIC include)
+
+# Optional multi-core CPU parallelization via OpenMP
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(prototype_core PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 add_executable(prototype_navigation src/main.cpp)
 target_link_libraries(prototype_navigation PRIVATE prototype_core)

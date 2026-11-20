@@ -2,9 +2,10 @@
 
 #include "transition_system.hpp"
 #include "product_automaton.hpp"
+#include "grid_quantizer.hpp"
 #include <vector>
-#include <unordered_set>
 #include <optional>
+#include <functional>
 #include <cstddef>
 
 namespace symbolic::synthesis {
@@ -40,18 +41,40 @@ public:
         const TransitionSystem& ts,
         const ProductAutomaton& automaton,
         size_t max_iters = 100);
-
-    // Direct navigation on the spatial grid: reach target cells while avoiding obstacle cells
-    [[nodiscard]] SynthesisResult solve_spatial(
-        const TransitionSystem& ts,
-        const unordered_set<size_t>& targets,
-        const unordered_set<size_t>& obstacles,
-        size_t max_iters = 100);
 };
 
+// Backward reachability solver operating on the full 1.5M state space.
+// Supports multi-core parallelization via OpenMP (#if defined(_OPENMP)) or sequential execution.
+int solve_reachability_backward_cpp(
+    std::vector<float>&              V,
+    std::vector<uint8_t>&            ctrl,
+    const ::grid::RegionConfig&      regions,
+    const ::grid::AbstractionTables& tables,
+    std::function<void(int, float)>  callback = nullptr,
+    bool                             use_parallel = true);
+
+// Saves the synthesized value function and controller policy to a binary file.
+bool save_controller_binary(const char*                  file_path,
+                            const std::vector<float>&   V,
+                            const std::vector<uint8_t>& ctrl);
+
+// Loads a previously computed controller from a binary file.
+bool load_controller_binary(const char*             file_path,
+                            std::vector<float>&    V,
+                            std::vector<uint8_t>&  ctrl);
+
 } // namespace symbolic::synthesis
+
+namespace solver {
+    using symbolic::synthesis::solve_reachability_backward_cpp;
+    using symbolic::synthesis::save_controller_binary;
+    using symbolic::synthesis::load_controller_binary;
+}
 
 namespace symbolic {
     using synthesis::SynthesisResult;
     using synthesis::BackwardReachabilitySolver;
+    using synthesis::solve_reachability_backward_cpp;
+    using synthesis::save_controller_binary;
+    using synthesis::load_controller_binary;
 }
