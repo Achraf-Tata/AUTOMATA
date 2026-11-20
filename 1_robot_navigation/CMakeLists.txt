@@ -39,5 +39,9 @@ endif()
 add_executable(prototype_navigation src/main.cpp)
 target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
-add_executable(test_prototype tests/test_prototype.cpp)
+add_executable(test_prototype
+    tests/test_prototype.cpp
+    src/simulation_engine.cpp
+    src/app_state.cpp
+)
 target_link_libraries(test_prototype PRIVATE prototype_core)
