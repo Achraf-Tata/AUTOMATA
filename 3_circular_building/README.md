@@ -61,9 +61,9 @@ The codebase has been refactored adhering strictly to classical GoF design patte
 | **Strategy Pattern (GoF)** | Weather Engine | `IWeatherStrategy` with `ConstantWeatherStrategy`, `DiurnalWeatherStrategy`, `ColdSnapWeatherStrategy`, and `ManualWeatherStrategy`. |
 | **Factory Pattern (GoF)** | Weather Factory | `WeatherFactory::create(Type, manual_temp)` encapsulates strategy instantiation. |
 | **Memento Pattern (GoF)** | Controller Persistence | `ControllerSerializer` providing binary serialization (`save_binary`, `load_binary`) with `CBMC` magic header, schema versioning, and validation. |
-| **Single Responsibility (SRP)** | Modular Architecture | - `ThermalNetworkModel`: Difference equation & Metzler monotonicity.<br>- `UniformGrid1D` & `ContractAbstraction`: Quantization & interval math.<br>- `CompositionalContractSolver`: Fixed-point computation & policy extraction.<br>- `SimulationEngine`: Multi-room continuous/discrete stepping & Monte Carlo perturbation.<br>- `BuildingView` & `ControlPanel`: Dear ImGui rendering. |
+| **Single Responsibility (SRP)** | Modular Architecture | - `ThermalNetworkModel`: Difference equation & Metzler monotonicity.<br>- `UniformGrid1D` & `ContractAbstraction`: Quantization & interval math.<br>- `CompositionalContractSolver`: Fixed-point computation & policy extraction.<br>- `SimulationEngine`: Multi-room continuous/discrete stepping & Monte Carlo perturbation. |
 | **Open/Closed Principle (OCP)** | Strategy Extensibility | New solvers (e.g. GPU CUDA solver) or weather profiles can be added without modifying existing consumer code. |
-| **Dependency Inversion (DIP)** | Abstraction Coupling | High-level simulation engine and UI depend on `ISynthesisSolver` and `IWeatherStrategy` interfaces rather than concrete classes. |
+| **Dependency Inversion (DIP)** | Abstraction Coupling | High-level simulation engine depends on `ISynthesisSolver` and `IWeatherStrategy` interfaces rather than concrete classes. |
 
 ---
 
@@ -130,9 +130,8 @@ cmake --build 3_circular_building/build --config Release
 ### Running the Competition Benchmarks (Slide 17)
 ```powershell
 .\3_circular_building\build\Release\circular_building.exe
-```
-
-### Launching the Interactive GUI Application
-```powershell
-.\3_circular_building\build\Release\building_gui.exe
+# Or with extended sweep:
+.\3_circular_building\build\Release\circular_building.exe --extended
+# Or with arbitrary room counts:
+.\3_circular_building\build\Release\circular_building.exe 5000 25000 1000000
 ```

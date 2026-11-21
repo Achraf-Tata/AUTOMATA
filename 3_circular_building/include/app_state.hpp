@@ -93,14 +93,6 @@ struct AppState {
     bool   safety_violated      = false;
     int    violation_room_id    = -1;
     double total_energy_kwh     = 0.0;
-
-    // --- UI View Options ---
-    bool show_labels            = true;
-    bool show_flux_arrows       = true;
-    bool show_heaters           = true;
-    bool show_weather_center    = true;
-    bool show_temp_plot         = true;
-    int  selected_room          = -1;
 };
 
 // Initializes default application context, synthesizes contract, and sets room temperatures
