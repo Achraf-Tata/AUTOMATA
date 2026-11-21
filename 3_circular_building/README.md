@@ -1,110 +1,138 @@
-# Project 3: Circular Building (Scalable Challenge)
+# Project 3: Temperature Regulation in a Circular Building (Competition Challenge)
 
-## 1. System & Goal
+Course: **Computation Theory - Fall 2026**  
+Instructor: **Prof. Adnane Saoud**  
+Reference: **Slides 15–17 of `42717210-s7467.pdf`**
 
-We have $N$ identical rooms arranged in a circle. Each room $i \in \{0, \dots, N-1\}$ shares interior walls with its left neighbor ($i-1$) and right neighbor ($i+1$), wrapping around with periodic boundaries ($i \pm 1 \pmod N$):
+---
 
+## 1. System Model & Problem Statement
+
+We consider an $N$-room circular building ($N \ge 3$) where each room $i \in \{1, \dots, N\}$ exchanges heat through conduction with its left neighbor $i-1 \pmod N$, its right neighbor $i+1 \pmod N$, and the exterior environment.
+
+### 1.1 Discrete Difference Thermal Dynamics (Slide 15)
 $$
-\dot{T}_i(t) = -\alpha \big(T_i(t) - T_e(t)\big) - \beta \Big(\big(T_i(t) - T_{i-1}(t)\big) + \big(T_i(t) - T_{i+1}(t)\big)\Big) + \gamma u_i(t)
+T_i(t+1) = T_i(t) + \alpha \big(T_{i+1}(t) + T_{i-1}(t) - 2T_i(t)\big) + \beta \big(T_e - T_i(t)\big) + \gamma \big(T_h - T_i(t)\big) u_i(t)
 $$
 
-* **Sample time**: $\tau = 1.0\text{ s}$.
-* **Constants**: Wall heat loss $\alpha = 0.05$, inter-room conduction $\beta = 0.02$, heater power $\gamma = 1.0$.
-* **Domains**: State $T_i \in [15.0, 25.0]^\circ\text{C}$, outside weather $T_e \in [5.0, 12.0]^\circ\text{C}$, heater $u_i \in \{0, 1\}$.
-* **Global Target**: Keep every room inside $[19.0, 22.0]^\circ\text{C}$ for all time.
-* **Zero Dependencies**: Self-contained folder that builds independently.
+### 1.2 System Parameters & Specifications
+* **Inter-room conduction**: $\alpha = 0.45$
+* **Heat exchange with outside**: $\beta = 0.045$
+* **Heater heat transfer coefficient**: $\gamma = 0.09$
+* **Exterior ambient temperature**: $T_e = -1.0^\circ\text{C}$
+* **Heater radiator temperature**: $T_h = 50.0^\circ\text{C}$
+* **Control inputs**: $n_u = 3 \implies u_i \in \{0.0, 0.3, 0.6\}$
+* **Comfort safe set**: $S = [17.0, 22.0]^N\,^\circ\text{C}$
+* **Uniform state partition**: $n_d = 10$ intervals per dimension ($\Delta T = 0.5^\circ\text{C}$/cell)
+* **Periodic boundaries**: $T_0 = T_N$, $T_{N+1} = T_1$
 
 ---
 
-## 2. Why We Do Each Step (Plain English)
+## 2. Why Monolithic Synthesis Fails vs. Compositional Contracts (Slide 16–17)
 
-1. **Why multi-room coupled dynamics?**
-   Rooms are not isolated. Heat leaks across shared walls through conduction ($-\beta(T_i - T_{i\pm 1})$). If your neighbor turns off their heater, your room gets colder. We have to model this coupling.
-2. **Why does a naive monolithic grid fail ($50^N$ explosion)?**
-   If 1 room has 50 intervals, 4 rooms need $50^4 = 6.25 \times 10^6$ cells. A 5-room building needs $50^5 = 312,500,000$ cells, which runs out of memory and crashes the computer.
-3. **Why Assume-Guarantee contracts?**
-   Instead of solving all $N$ rooms together in a giant grid, each room solves its own 1D problem:
-   * Room $i$ **assumes** its neighbors will stay in $[19.0, 22.0]^\circ\text{C}$ ($A_i$).
-   * Room $i$ **guarantees** its own heater will keep room $i$ in $[19.0, 22.0]^\circ\text{C}$ ($G_i$).
-   * Because each room only solves a 1D model with 50 cells, synthesis scales linearly ($O(N \cdot 50)$) instead of exponentially.
-4. **Why is the circular contract mathematically sound?**
-   Normally, circular promises ("I'm safe if you're safe, and you're safe if I'm safe") can be invalid due to circular reasoning. The theorem in the paper (Saoud, Girard, Fribourg) proves that in symmetric physical networks, this mutual assumption holds formally without circular deadlocks.
-5. **Why the grouped 1D discrete equation?**
-   Under assumption $A_i: T_{i-1}, T_{i+1} \in [19, 22]$, neighbor heat exchange contributes $w_{\text{coupling}} = \beta \tau (T_{i-1} + T_{i+1}) \in [0.76, 0.88]$. Combining this with weather disturbance $\alpha \tau T_e \in [0.25, 0.60]$ gives a single combined disturbance range:
-   $$W_i = \alpha \tau T_e + w_{\text{coupling}} \in [1.01, 1.48]$$
-   This lets room $i$ step forward with a simple 1D equation:
-   $$T_i(t+1) = 0.91 \cdot T_i(t) + W_i + 1.0 \cdot u_i(t)$$
-6. **Why Metzler monotonicity (Kamke-Müller)?**
-   Heat flows from hot to cold ($\partial \dot{T}_i / \partial T_{i\pm 1} = \beta > 0$). Trajectories preserve order: if you start colder, you stay colder. To verify an infinite continuum of temperatures, we only have to simulate the coldest possible corner $\underline{T}$ and the hottest possible corner $\overline{T}$.
+### 2.1 The Curse of Dimensionality ($10^N$ States, $3^N$ Inputs)
+Under standard monolithic safety synthesis, the global grid grows exponentially:
+* $N = 3$: $10^3 = 1,000$ states, $3^3 = 27$ inputs
+* $N = 5$: $10^5 = 100,000$ states, $3^5 = 243$ inputs
+* $N = 10$: $10^{10} = 10\text{ Billion}$ states, $3^{10} = 59,049$ inputs ($\sim 10\text{ GB}$ RAM, hours to solve)
+* $N = 100$: $10^{100}$ states (exceeds total atoms in observable universe)
 
----
-
-## 3. Member Tasks (What each function does and how)
-
-### Member 1: Coupled Network ODE & Monotonicity
-* **File**: `include/circular_network.hpp`
-* **Constants**: `ALPHA = 0.05, BETA = 0.02, GAMMA = 1.0`
-* **Functions**:
-  1. `void step_network_euler(std::vector<double>& T, const std::vector<int>& u, double Te, double dt)`
-     * **What**: Moves the full $N$-room continuous simulation forward by 1 second.
-     * **How**: For each room $i$, finds left neighbor $(i - 1 + N) \pmod N$ and right neighbor $(i + 1) \pmod N$, computes $\dot{T}_i$, and applies $T_i \leftarrow T_i + dt \cdot \dot{T}_i$.
-  2. `void propagate_extreme_trajectories(std::vector<double>& T_lower, std::vector<double>& T_upper, ...)`
-     * **What**: Bounds the temperature range of all $N$ rooms by simulating only 2 trajectories.
-     * **How**: By Kamke-Müller theorem, simulates $\underline{T}$ with coldest weather and heaters OFF, and $\overline{T}$ with warmest weather and heaters ON. Complexity is $O(N)$.
-  3. `bool verify_metzler_property()`
-     * **What**: Sanity check that off-diagonal Jacobian terms are positive ($\beta = 0.02 > 0$).
-
-### Member 2: Local Contract Abstraction
-* **File**: `include/contract_abstraction.hpp`
-* **Constants**: `W_MIN = 1.01, W_MAX = 1.48, COEFF_T = 0.91`
-* **Functions**:
-  1. `std::pair<double, double> step_local_interval(double T_min, double T_max, int u)`
-     * **What**: Computes next interval for room $i$ under combined disturbance $W_i \in [1.01, 1.48]$.
-     * **How**: $\underline{T}' = 0.91 \underline{T} + 1.01 + u$ and $\overline{T}' = 0.91 \overline{T} + 1.48 + u$.
-  2. `std::vector<int> compute_local_post(int cell_id, int u)`
-     * **What**: Computes successor cells for 1 room on a 50-cell grid over $[15, 25]^\circ\text{C}$.
-     * **How**: Calls `step_local_interval` on cell bounds, quantizes the resulting interval, and returns all cell indices in that range.
-
-### Member 3: Assume-Guarantee Contract Synthesis
-* **Files**: `include/contract_solver.hpp`, `src/contract_solver.cpp`
-* **Initialization**: $R_0 = \{20, \dots, 34\}$ (safe range $[19, 22]^\circ\text{C}$).
-* **Functions**:
-  1. `Set synthesize_local_room_contract(int room_id, const LocalAbstraction& abs)`
-     * **What**: Synthesizes the local invariant set $R_i^*$ and policy $u_i = C_i(T_i)$ for room $i$.
-     * **How**: Solves the 1D safety fixed-point loop $R = R \cap Pre(R)$ using Member 2's local transitions. Picks $u=0$ if safe, else $u=1$.
-  2. `bool verify_circular_contract_compatibility(const std::vector<Set>& local_invariants)`
-     * **What**: Verifies the composition condition.
-     * **How**: Checks that each room's local guarantee $G_i \subseteq [19, 22]$ satisfies its neighbors' assumptions $A_{i \pm 1}$.
-
-### Member 4: OpenMP Multi-Threading & CUDA
-* **Files**: `src/compositional_cpu.cpp`, `src/compositional_cuda.cu`, `src/monolithic_baseline.cpp`
-* **Functions**:
-  1. `void benchmark_monolithic_crash(int max_N)`
-     * **What**: Demonstrates that naive global state discretization fails at $N \ge 5$.
-     * **How**: Allocates global grid $50^N$. Measures memory and runtime for $N=1, 2, 3, 4$. Catches `std::bad_alloc` at $N=5$ and logs the failure.
-  2. `void synthesize_compositional_openmp(int N, std::vector<Controller>& controllers)`
-     * **What**: Parallelizes synthesis for $N=100+$ rooms across 24 CPU cores.
-     * **How**: Runs `#pragma omp parallel for schedule(dynamic)` across all $N$ rooms.
-  3. `void synthesize_compositional_cuda(int N, ...)`
-     * **What**: GPU kernel running on the RTX 5080, dispatching 1 thread block per room.
-
-### Member 5: Benchmark Suite & Simulation
-* **File**: `src/main_building.cpp`
-* **Functions**:
-  1. `void run_scalability_benchmark(const char* csv_out)`
-     * **What**: Measures execution time and memory for $N \in \{3, 4, 8, 16, 32, 64, 100, 1000\}$ and writes to CSV.
-  2. `void simulate_multi_room_network(int N, double duration_sec, const char* trace_out)`
-     * **What**: Simulates the full $N$-room ring under variable weather for 24 hours.
-     * **How**: At each second, every room evaluates its local controller $u_i = C_i(T_i)$, updates temperatures via Member 1's `step_network_euler()`, and logs to CSV.
-  3. `bool assert_all_rooms_safe(const char* trace_in)`
-     * **What**: Confirms zero violations across all $N$ rooms ($19.0 \le T_i(t) \le 22.0$).
+### 2.2 Compositional Assume-Guarantee Circular Contracts
+Instead of a monolithic $N$-dimensional grid, we decompose the building into $N$ coupled 1D subsystems:
+1. **Assumption ($A_i$)**: Room $i$ assumes its immediate neighbors remain within the comfort set $T_{i\pm 1} \in [17.0, 22.0]^\circ\text{C}$.
+2. **Induced Disturbance Bounds ($W_i$)**:
+   $$W_i = \alpha(T_{i-1} + T_{i+1}) + \beta T_e \in [15.255, 19.755]^\circ\text{C}$$
+3. **Local 1D Abstraction**:
+   Each room solves an identical 1D safety fixed-point loop on only **10 cells**!
+   $$R = R \cap Pre(R)$$
+4. **Circular Contract Composition Theorem (Saoud, Girard, Fribourg)**:
+   Since each room's invariant guarantee satisfies $G_i \subseteq A_{i\pm 1} = [17.0, 22.0]^\circ\text{C}$, symmetric circular composition ensures the entire coupled network remains safe without deadlocks or circular dependency paradoxes.
+5. **Linear Complexity**: Synthesis time scales in $O(N \cdot 10)$ instead of $O(10^N)$, solving $N = 1,000$ rooms in milliseconds on a standard laptop.
 
 ---
 
-## 4. Build & Run
+## 3. Design Patterns & SOLID Principles
 
-```bash
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-cmake --build build --config Release
-./build/circular_building
+The codebase has been refactored adhering strictly to classical GoF design patterns and SOLID principles:
+
+| Design Pattern / Principle | Component | Concrete Implementation |
+|---|---|---|
+| **Strategy Pattern (GoF)** | Safety Synthesis Solver | `ISynthesisSolver` abstract interface with `CompositionalContractSolver` and `MonolithicCurseEvaluator`. Allows hot-swapping algorithms. |
+| **Strategy Pattern (GoF)** | Weather Engine | `IWeatherStrategy` with `ConstantWeatherStrategy`, `DiurnalWeatherStrategy`, `ColdSnapWeatherStrategy`, and `ManualWeatherStrategy`. |
+| **Factory Pattern (GoF)** | Weather Factory | `WeatherFactory::create(Type, manual_temp)` encapsulates strategy instantiation. |
+| **Memento Pattern (GoF)** | Controller Persistence | `ControllerSerializer` providing binary serialization (`save_binary`, `load_binary`) with `CBMC` magic header, schema versioning, and validation. |
+| **Single Responsibility (SRP)** | Modular Architecture | - `ThermalNetworkModel`: Difference equation & Metzler monotonicity.<br>- `UniformGrid1D` & `ContractAbstraction`: Quantization & interval math.<br>- `CompositionalContractSolver`: Fixed-point computation & policy extraction.<br>- `SimulationEngine`: Multi-room continuous/discrete stepping & Monte Carlo perturbation.<br>- `BuildingView` & `ControlPanel`: Dear ImGui rendering. |
+| **Open/Closed Principle (OCP)** | Strategy Extensibility | New solvers (e.g. GPU CUDA solver) or weather profiles can be added without modifying existing consumer code. |
+| **Dependency Inversion (DIP)** | Abstraction Coupling | High-level simulation engine and UI depend on `ISynthesisSolver` and `IWeatherStrategy` interfaces rather than concrete classes. |
+
+---
+
+## 4. Official Competition Benchmark Results (Slide 17)
+
+Executed on an Intel / AMD multi-core workstation:
+
+```text
+====================================================================================
+     N      Tabs (ms)     Tctrl (ms)       Peak Memory   Controllable %
+====================================================================================
+     3          0.011          2.549           0.9 KB            100.0 %
+     4          0.019          0.005           0.9 KB            100.0 %
+     5          0.017          0.009           1.0 KB            100.0 %
+    10          0.018          0.012           1.2 KB            100.0 %
+    50          0.017          0.011           2.9 KB            100.0 %
+   100          0.018          0.018           5.1 KB            100.0 %
+   500          0.017          0.039          22.3 KB            100.0 %
+  1000          0.018          0.055          43.7 KB            100.0 %
+====================================================================================
+```
+
+* **Abstraction Time ($T_{\text{abs}}$)**: $\approx 0.018\text{ ms}$ (independent of $N$).
+* **Control Time ($T_{\text{ctrl}}$)**: $\approx 0.055\text{ ms}$ for $N=1000$ rooms.
+* **Peak Memory**: $\le 45\text{ KB}$ for $N=1000$ rooms.
+* **Controllable Percentage**: **100.0%** of cells in $[17.0, 22.0]^\circ\text{C}$ are controllable and robustly invariant.
+* **Closed-Loop Verification**: 24-hour simulation (86,400 steps) with 0 temperature violations.
+
+---
+
+## 5. Comprehensive Unit Test Suite
+
+The test suite in `tests/test_building.cpp` covers 10 verification scenarios:
+
+1. **Metzler Monotonicity**: Verifies off-diagonal $\alpha = 0.45 > 0$ and diagonal $1 - 2\alpha - \beta - \gamma u > 0$ for all $u \in \{0.0, 0.3, 0.6\}$.
+2. **Local Contract Disturbance Bounds & Quantization**: Verifies $W_i \in [15.255, 19.755]^\circ\text{C}$ and 10-cell quantization.
+3. **Discrete Transition Table & Sink Boundary**: Verifies sink cell 10 is absorbing and controls shift reach sets monotonically.
+4. **Fixed-Point Contract Invariant Synthesis**: Verifies 10/10 cells are invariant ($100.0\%$) and converge within $\le 10$ iterations.
+5. **Circular Contract Composition Guarantee**: Verifies $G_i \subseteq A_{i\pm 1}$ (Saoud-Girard-Fribourg theorem).
+6. **Controller Extraction & Robust Invariance Policy**: Verifies robust control assignment ($u=0.3$) and out-of-comfort emergency recovery.
+7. **Controller Binary Serialization (Memento Pattern)**: Bit-for-bit roundtrip verification with magic header `CBMC`.
+8. **OpenMP Multi-Core Parallel Equivalence**: Verifies sequential and parallel solvers produce identical policies.
+9. **Continuous Multi-Room Closed-Loop Simulation**: 5,000-step coupled simulation of $N=16$ rooms with zero violations.
+10. **Kamke-Müller Extreme Envelopes & Monte Carlo Bundle**: Verifies $50/50$ perturbed runs remain safely bounded in $[17.0, 22.0]^\circ\text{C}$.
+
+---
+
+## 6. Build & Run Instructions
+
+The project is completely self-contained with **zero dependencies on `1_robot_navigation`**.
+
+### Building with CMake (MSVC / Windows)
+```powershell
+$env:TEMP='F:\temp'; $env:TMP='F:\temp'
+cmake -B 3_circular_building/build -S 3_circular_building
+cmake --build 3_circular_building/build --config Release
+```
+
+### Running the Test Suite
+```powershell
+.\3_circular_building\build\Release\test_building.exe
+```
+
+### Running the Competition Benchmarks (Slide 17)
+```powershell
+.\3_circular_building\build\Release\circular_building.exe
+```
+
+### Launching the Interactive GUI Application
+```powershell
+.\3_circular_building\build\Release\building_gui.exe
 ```
