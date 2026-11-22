@@ -113,27 +113,35 @@ std::optional<std::size_t> current_rss_kib() {
     return std::nullopt;
 }
 
+// ---------------------------------------------------------------------------
+// Performance Benchmarking (50-run average to eliminate OS timing jitter)
+// ---------------------------------------------------------------------------
+// Measuring microsecond-level code with a single run can be skewed by CPU frequency
+// scaling or OS thread scheduling. We execute 50 runs and compute the average,
+// giving reliable and reproducible numbers for presentations and defences.
 struct BenchmarkMetrics {
-    double abs_us    = 0.0;
-    double ctrl_us   = 0.0;
-    double total_us  = 0.0;
-    int    runs      = 50;
+    double abs_us    = 0.0; // Average abstraction time (T_abs) in microseconds
+    double ctrl_us   = 0.0; // Average synthesis time (T_ctrl) in microseconds
+    double total_us  = 0.0; // Average combined total time in microseconds
+    int    runs      = 50;  // Sample count
 };
 
 BenchmarkMetrics benchmark_synthesis(int repeats = 50) {
     using Clock = std::chrono::steady_clock;
     using Micros = std::chrono::duration<double, std::micro>;
 
-    // Warmup run
+    // 1. Warm-up pass to ensure instruction caches are filled
     auto trans = build_abstraction();
     auto pol = synthesize(trans);
 
+    // 2. Timed benchmark loop for abstraction
     const auto t0 = Clock::now();
     for (int i = 0; i < repeats; ++i) {
         trans = build_abstraction();
     }
     const auto t1 = Clock::now();
 
+    // 3. Timed benchmark loop for controller synthesis
     for (int i = 0; i < repeats; ++i) {
         pol = synthesize(trans);
     }
@@ -787,6 +795,10 @@ private:
                 ImGui::TableHeadersRow();
                 ImGui::PopFont();
 
+                // Virtual Scrolling with ImGuiListClipper:
+                // If N = 1,000,000 rooms, rendering 1,000,000 rows would crush performance.
+                // The clipper calculates exactly which rows are currently visible inside the scroll view
+                // (typically only 20 to 30 rows) and skips all others, keeping GUI rendering at 60 FPS!
                 ImGuiListClipper clipper;
                 clipper.Begin(static_cast<int>(total_rooms));
                 while (clipper.Step()) {

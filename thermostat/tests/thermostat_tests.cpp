@@ -19,12 +19,27 @@ void require(bool condition, const char* message) {
     }
 }
 
+// Reference continuous thermal update from Slide 15 evaluated in double-precision floating point.
+// Used as a golden standard to verify the integer-scaled abstraction.
 double slide_update(double own, double left, double right, double heater) {
     return own + 0.45 * (left + right - 2.0 * own)
                + 0.045 * (-1.0 - own) + 0.09 * (50.0 - own) * heater;
 }
 
+// ============================================================================
+// Test 1: Abstraction Verification (Comparing with the 8 Extreme Corners)
+// ============================================================================
+//
+// For each cell [own_min, own_max], the two neighbors can independently vary
+// over [17, 22] x [17, 22].
+// This forms a 3-dimensional cube with 2^3 = 8 corners:
+//   (own_endpoint, left_endpoint, right_endpoint)
+//
+// This test evaluates the slide equation at ALL 8 CORNERS in double precision,
+// scales by 2000, and verifies that our integer-arithmetic build_abstraction()
+// produces the EXACT same successor bitmask.
 void test_abstraction() {
+    // 1. Verify quantization boundaries
     require(quantize(17.0) == 0, "17 C should be in the first cell.");
     require(quantize(std::nextafter(17.5, 17.0)) == 0, "The first cell is open on the right.");
     require(quantize(17.5) == 1, "Shared endpoints belong to the upper cell.");
@@ -32,10 +47,11 @@ void test_abstraction() {
     require(!quantize(22.01) && !quantize(16.99), "Out-of-range temperatures are unsafe.");
     require(!quantize(std::numeric_limits<double>::quiet_NaN()), "NaN is an invalid measurement.");
 
+    // 2. Verify transition table against all 8 corners
     const auto table = build_abstraction();
     for (int bin = 0; bin < bin_count; ++bin) {
         for (int action = 0; action < action_count; ++action) {
-            // Evaluate the original slide equation at all eight corners.
+            // Evaluate the continuous slide equation at all eight corners
             long lower = std::numeric_limits<long>::max();
             long upper = std::numeric_limits<long>::min();
             for (double own : {17.0 + 0.5 * bin, 17.5 + 0.5 * bin}) {
@@ -61,6 +77,14 @@ void test_abstraction() {
     }
 }
 
+// ============================================================================
+// Test 2: Synthesis Verification (Fixed-Point Convergence & Backward Pruning)
+// ============================================================================
+//
+// 1. Verifies that the synthesized policy marks all 10 comfort bins as winning,
+//    and selects heater setting 0.3 as the robust invariant action.
+// 2. Creates an artificial transition system with an unsafe state to verify that
+//    our backward fixed-point correctly cascades and eliminates unsafe chains.
 void test_synthesis() {
     const auto policy = synthesize(build_abstraction());
     require(policy.winning == all_bins, "All ten comfort cells must be winning.");
@@ -69,7 +93,14 @@ void test_synthesis() {
     }
     require(certified_percentage(policy, 1000000) == 100.0, "All building cells are certified.");
 
-    // A losing cell propagates backwards through the graph over multiple passes.
+    // Artificial test graph to test fixed-point elimination:
+    //   Bin 0 -> Bin 1
+    //   Bin 1 -> Bin 2
+    //   Bin 2 -> Unsafe!
+    //   Bin 3 -> Bin 3 (safe self-loop)
+    //
+    // The backward fixed point must prune Bin 2 (leads to unsafe), then Bin 1 (leads to Bin 2),
+    // then Bin 0 (leads to Bin 1). Only Bin 3 should survive!
     Transitions example{};
     example[0][0] = bin_bit(1);
     example[1][0] = bin_bit(2);
@@ -81,6 +112,9 @@ void test_synthesis() {
     require(reduced.allowed[0] == 0, "Losing cells must have no allowed action.");
 }
 
+// ============================================================================
+// Test 3: Input Parsing & Guard Verification
+// ============================================================================
 void test_room_count_input() {
     require(parse_room_count("3") == 3, "A three-room building must be accepted.");
     require(parse_room_count("3000000000") == 3'000'000'000ULL,
@@ -115,6 +149,9 @@ void test_room_count_input() {
             "A billion rooms must still be eligible for certification.");
 }
 
+// ============================================================================
+// Test 4: Simulation & Boundary Wrapping Verification
+// ============================================================================
 void test_simulation() {
     const auto policy = build_controller().policy;
     Building building({17.0, 20.0, 22.0});

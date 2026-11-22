@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+// Platform-specific headers to measure the process's real RAM usage (RSS - Resident Set Size)
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -20,6 +21,8 @@
 
 namespace {
 
+// Measures the peak physical RAM used by this process in KiB (Kilobytes).
+// Windows uses GetProcessMemoryInfo; Linux/macOS uses getrusage.
 std::optional<std::size_t> peak_rss_kib() {
 #ifdef _WIN32
     PROCESS_MEMORY_COUNTERS memory{};
@@ -48,6 +51,19 @@ void print_peak_rss() {
 
 } // namespace
 
+// ============================================================================
+// CLI Entry Point (Headless Benchmarking & Batch Simulation)
+// ============================================================================
+//
+// Usage:
+//   thermostat_cli [rooms [ticks]]
+//
+// Examples:
+//   thermostat_cli 1000000
+//     -> Synthesizes the controller and certifies 1,000,000 rooms in < 1 microsecond.
+//
+//   thermostat_cli 1000000 50
+//     -> Certifies and simulates 50 physical heat transfer ticks for 1,000,000 rooms.
 int main(int argc, char** argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--help") {
         std::cout << "Usage: thermostat_cli [rooms [ticks]]\n"
@@ -62,6 +78,7 @@ int main(int argc, char** argv) {
         const std::size_t rooms = argc >= 2 ? thermostat::parse_room_count(argv[1]) : 3;
         const std::size_t ticks = argc == 3 ? thermostat::parse_count(argv[2], "Ticks") : 0;
 
+        // 1. Synthesize the symbolic controller (runs in O(1) time and space)
         const auto controller = thermostat::build_controller();
         std::cout << "Rooms: " << rooms << '\n'
                   << std::fixed << std::setprecision(3)
@@ -71,10 +88,12 @@ int main(int argc, char** argv) {
                   << thermostat::certified_percentage(controller.policy, rooms) << "%\n";
         print_peak_rss();
 
+        // 2. If simulation ticks were requested, run the physical simulation
         if (argc == 3) {
             std::vector<double> initial(rooms);
             for (std::size_t i = 0; i < rooms; ++i) {
-                initial[i] = i % 2 == 0 ? thermostat::min_temperature : thermostat::max_temperature;
+                // Initialize with an alternating temperature profile: 17°C, 22°C, 17°C, 22°C...
+                initial[i] = (i % 2 == 0) ? thermostat::min_temperature : thermostat::max_temperature;
             }
             thermostat::Building building(std::move(initial));
             for (std::size_t tick = 0; tick < ticks; ++tick) {

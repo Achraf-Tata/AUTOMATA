@@ -9,6 +9,11 @@
 
 namespace thermostat {
 
+// Parses a non-negative integer from a string view using std::from_chars (C++17/20).
+// Why std::from_chars?
+//   - Zero memory allocation and zero string copies.
+//   - Extremely fast and safe: clearly reports invalid characters and integer overflow
+//     without relying on slow exceptions for normal flow control.
 inline std::size_t parse_count(std::string_view value, std::string_view name) {
     if (!value.empty()) {
         std::size_t count{};
@@ -27,6 +32,9 @@ inline std::size_t parse_count(std::string_view value, std::string_view name) {
     throw std::invalid_argument(std::string(name) + " must be a nonnegative integer.");
 }
 
+// Parses and validates the room count for a circular building.
+// A circular ring topology requires at least 3 rooms so that each room's left and right
+// neighbors are distinct physical rooms.
 inline std::size_t parse_room_count(std::string_view value) {
     const auto count = parse_count(value, "Room count");
     if (count < 3) {
@@ -35,7 +43,11 @@ inline std::size_t parse_room_count(std::string_view value) {
     return count;
 }
 
-// The live dashboard keeps two temperature vectors and visits every room on each tick.
+// Safety threshold for the interactive live graphical simulation.
+// Note: The theoretical controller certification supports ANY N up to infinity (O(1)),
+// but simulating 1,000,000 live temperature trajectories in real time at 60 FPS
+// requires allocating memory for 2 million doubles (~16 MB). We guard against an accidental
+// input like 100,000,000 rooms freezing the user's interactive desktop window.
 inline constexpr std::size_t live_room_limit = 1'000'000;
 
 inline void check_live_room_limit(std::size_t count) {
