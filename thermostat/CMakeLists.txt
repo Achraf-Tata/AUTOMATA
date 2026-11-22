@@ -71,8 +71,12 @@ if(THERMOSTAT_BUILD_GUI)
         "${imgui_SOURCE_DIR}/misc/cpp"
         "${CMAKE_CURRENT_BINARY_DIR}"
     )
+    set_target_properties(thermostat_gui PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
     if(MSVC)
         target_compile_options(thermostat_gui PRIVATE /utf-8)
+        target_link_options(thermostat_gui PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
     endif()
     target_link_libraries(thermostat_gui PRIVATE thermostat_core glfw OpenGL::GL ${CMAKE_DL_LIBS})
 endif()
