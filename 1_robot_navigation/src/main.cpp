@@ -6,11 +6,13 @@
 #include "backward_reachability.hpp"
 #include "safety_solver.hpp"
 #include "simulator.hpp"
+#include "simulation_engine.hpp"
 
 #include <iostream>
 #include <iomanip>
 #include <cmath>
 #include <vector>
+#include <chrono>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -38,7 +40,7 @@ using enum SimulationOutcome;
 // Step 6: Work backward from the goal to find winning moves for each spot on the map.
 // Step 6b: Also find safe driving zones where the robot can cruise forever without crashing.
 // Step 7: Put the robot on the virtual floor and let it drive itself to the finish line!
-int main(int argc, char* argv[]) {
+int run_generic_grid(int argc, char* argv[]) {
     // Default partition resolution (can be overridden via command-line arguments)
     size_t nx     = 30;
     size_t ny     = 30;
@@ -166,5 +168,36 @@ int main(int argc, char* argv[]) {
     }
     cout << ", language_satisfied = " << (trace.accepted ? "true" : "false") << "\n";
 
-    return 0;
+    return trace.accepted ? 0 : 2;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc == 4) return run_generic_grid(argc, argv);
+    if (argc != 1) {
+        cerr << "Usage: prototype_navigation [nx ny ntheta]\n";
+        return 1;
+    }
+    robot_nav::AppState app;
+    robot_nav::init_app_state(app);
+    const auto start = chrono::steady_clock::now();
+    app.abs_tables = ::grid::precompute_abstraction_tables();
+    app.abs_tables_ready = true;
+    app.V = ::automaton::init_value_function();
+    app.ctrl = ::automaton::init_controller();
+    const int iterations = solve_reachability_backward_cpp(
+        app.V, app.ctrl, app.regions, app.abs_tables, nullptr, app.use_parallel);
+    cout << "Paper grid: 100 x 100 x 30, 15 inputs, 5 mission states\n"
+         << "Synthesis: " << iterations << " iterations, "
+         << chrono::duration<double>(chrono::steady_clock::now() - start).count() << " s\n";
+    if (iterations >= 100) {
+        cerr << "Synthesis did not reach a fixed point.\n";
+        return 2;
+    }
+    app.controller_ready = true;
+    app.sim_with_noise = false;
+    robot_nav::engine::run_simulation(app);
+    const bool accepted = app.last_status == robot_nav::RunStatus::GoalReached;
+    cout << "Simulation: " << app.sim_step << " steps, outcome = "
+         << (accepted ? "GoalReached" : "MissionFailed") << '\n';
+    return accepted ? 0 : 2;
 }

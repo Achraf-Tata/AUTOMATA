@@ -39,6 +39,7 @@ public:
 
     // Region label (free, R1, R2, R3, R4) for each grid cell
     vector<ObservationSymbol> cell_labels;
+    vector<uint8_t> cell_observation_masks;
 
     // Build the combined tracker and classify each grid cell into its region
     ProductAutomaton(

@@ -79,54 +79,54 @@ void DeterministicFiniteAutomaton::initialize_transition_table() {
 
 // single transition step: return delta(state, symbol)
 AutomatonState DeterministicFiniteAutomaton::transition(
-    AutomatonState current_state,
-    ObservationSymbol observation_symbol) const noexcept
+    AutomatonState q,
+    ObservationSymbol sym) const noexcept
 {
-    auto state_index = static_cast<uint8_t>(current_state) - 1;
-    auto symbol_index = static_cast<uint8_t>(observation_symbol);
+    auto q_idx = static_cast<uint8_t>(q) - 1;
+    auto sym_idx = static_cast<uint8_t>(sym);
 
-    if (state_index >= STATE_COUNT || symbol_index >= SYMBOL_COUNT) {
+    if (q_idx >= STATE_COUNT || sym_idx >= SYMBOL_COUNT) {
         return SinkTrap;
     }
 
-    return transition_table[state_index][symbol_index];
+    return transition_table[q_idx][sym_idx];
 }
 
 // trace a sequence of observations from q1 and return the final state reached
 AutomatonState DeterministicFiniteAutomaton::evaluate_trace(
-    const vector<ObservationSymbol>& observation_trace) const noexcept
+    const vector<ObservationSymbol>& trace) const noexcept
 {
-    AutomatonState current_state = initial_state;
-    for (const auto& observation_symbol : observation_trace) {
-        current_state = transition(current_state, observation_symbol);
-        if (current_state == SinkTrap) {
+    AutomatonState q = initial_state;
+    for (const auto& sym : trace) {
+        q = transition(q, sym);
+        if (q == SinkTrap) {
             break;
         }
     }
-    return current_state;
+    return q;
 }
 
 // check if the sequence of observations satisfies our mission (ends in q4)
 bool DeterministicFiniteAutomaton::accepts_word(
-    const vector<ObservationSymbol>& observation_word) const noexcept
+    const vector<ObservationSymbol>& word) const noexcept
 {
-    AutomatonState final_state = evaluate_trace(observation_word);
-    return is_accepting_state(final_state);
+    AutomatonState q_final = evaluate_trace(word);
+    return is_accepting_state(q_final);
 }
 
 // check if a state is in the accepting set (q4)
-bool DeterministicFiniteAutomaton::is_accepting_state(AutomatonState state) const noexcept {
-    return accepting_states.find(state) != accepting_states.end();
+bool DeterministicFiniteAutomaton::is_accepting_state(AutomatonState q) const noexcept {
+    return accepting_states.find(q) != accepting_states.end();
 }
 
 // check if a state is in the sink trap set (q5)
-bool DeterministicFiniteAutomaton::is_sink_state(AutomatonState state) const noexcept {
-    return sink_states.find(state) != sink_states.end();
+bool DeterministicFiniteAutomaton::is_sink_state(AutomatonState q) const noexcept {
+    return sink_states.find(q) != sink_states.end();
 }
 
 // string description for printing DFA state in logs
-string DeterministicFiniteAutomaton::state_to_string(AutomatonState state) {
-    switch (state) {
+string DeterministicFiniteAutomaton::state_to_string(AutomatonState q) {
+    switch (q) {
         case Initial:          return "q1 (Initial)";
         case VisitedWaypoint1: return "q2 (Visited R1)";
         case VisitedWaypoint2: return "q3 (Visited R2)";
@@ -137,8 +137,8 @@ string DeterministicFiniteAutomaton::state_to_string(AutomatonState state) {
 }
 
 // string description for printing observation symbol in logs
-string DeterministicFiniteAutomaton::symbol_to_string(ObservationSymbol symbol) {
-    switch (symbol) {
+string DeterministicFiniteAutomaton::symbol_to_string(ObservationSymbol sym) {
+    switch (sym) {
         case FreeSpace: return "FreeSpace";
         case Waypoint1: return "Waypoint1 (R1)";
         case Waypoint2: return "Waypoint2 (R2)";

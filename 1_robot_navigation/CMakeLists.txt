@@ -6,11 +6,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    add_compile_options(/W4 /permissive- /utf-8 /O2)
+    add_compile_options(/O2 /arch:AVX2 /W4 /MP /utf-8 /permissive-)
+    add_compile_definitions(_USE_MATH_DEFINES _CRT_SECURE_NO_WARNINGS)
+    add_link_options(/STACK:8388608)
 else()
-    add_compile_options(-Wall -Wextra -Wpedantic -O3)
+    add_compile_options(-O3 -march=native -Wall -Wextra -Wpedantic)
 endif()
 
+# Core Academic Prototype Sources
 set(PROTOTYPE_SOURCES
     src/interval.cpp
     src/bounding_box.cpp
@@ -20,14 +23,136 @@ set(PROTOTYPE_SOURCES
     src/unicycle_model.cpp
     src/transition_system.cpp
     src/backward_reachability.cpp
+    src/safety_solver.cpp
+    src/grid_quantizer.cpp
     src/simulator.cpp
 )
 
 add_library(prototype_core STATIC ${PROTOTYPE_SOURCES})
 target_include_directories(prototype_core PUBLIC include)
 
+# Optional multi-core CPU parallelization via OpenMP
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(prototype_core PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+# Console Academic Prototype Executable
 add_executable(prototype_navigation src/main.cpp)
 target_link_libraries(prototype_navigation PRIVATE prototype_core)
 
+add_library(robot_runtime STATIC src/app_state.cpp src/simulation_engine.cpp)
+target_link_libraries(robot_runtime PUBLIC prototype_core)
+target_link_libraries(prototype_navigation PRIVATE robot_runtime)
+
+# Unit Tests Executable
 add_executable(test_prototype tests/test_prototype.cpp)
-target_link_libraries(test_prototype PRIVATE prototype_core)
+target_link_libraries(test_prototype PRIVATE robot_runtime)
+
+add_executable(test_robot_regressions tests/test_robot_regressions.cpp)
+target_link_libraries(test_robot_regressions PRIVATE robot_runtime)
+
+add_executable(test_robot_certificate tests/test_robot_certificate.cpp)
+target_link_libraries(test_robot_certificate PRIVATE robot_runtime)
+
+enable_testing()
+add_test(NAME robot_prototype COMMAND test_prototype)
+add_test(NAME robot_regressions COMMAND test_robot_regressions)
+add_test(NAME robot_certificate COMMAND test_robot_certificate)
+add_test(NAME robot_console COMMAND prototype_navigation)
+add_test(NAME robot_coarse_grid COMMAND prototype_navigation 10 10 4)
+set_tests_properties(robot_coarse_grid PROPERTIES WILL_FAIL TRUE)
+set_tests_properties(robot_prototype robot_regressions robot_certificate robot_console robot_coarse_grid
+    PROPERTIES ENVIRONMENT "OMP_NUM_THREADS=4" TIMEOUT 180)
+
+# ---------------------------------------------------------------------------
+# GUI Dependencies: OpenGL, GLFW, Dear ImGui
+# ---------------------------------------------------------------------------
+find_package(OpenGL REQUIRED)
+
+include(FetchContent)
+
+set(LOCAL_GLFW_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/glfw-src")
+set(LOCAL_IMGUI_DIR "${CMAKE_CURRENT_BINARY_DIR}/_deps/imgui-src")
+
+# GLFW
+if(EXISTS "${LOCAL_GLFW_DIR}/include/GLFW/glfw3.h")
+    FetchContent_Declare(glfw SOURCE_DIR "${LOCAL_GLFW_DIR}")
+else()
+    FetchContent_Declare(
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG        3.4
+        GIT_SHALLOW    TRUE
+    )
+endif()
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(glfw)
+
+# Dear ImGui
+if(EXISTS "${LOCAL_IMGUI_DIR}/imgui.h")
+    FetchContent_Declare(imgui SOURCE_DIR "${LOCAL_IMGUI_DIR}")
+else()
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG        v1.91.5
+        GIT_SHALLOW    TRUE
+    )
+endif()
+FetchContent_MakeAvailable(imgui)
+
+add_library(imgui_lib STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui_lib PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
+
+# ---------------------------------------------------------------------------
+# Interactive GUI Executable: prototype_gui
+# ---------------------------------------------------------------------------
+set(GUI_SOURCES
+    src/main_gui.cpp
+    src/ui_theme.cpp
+    src/arena_view.cpp
+    src/control_panel.cpp
+    src/popup_dialogs.cpp
+)
+
+add_executable(prototype_gui
+    ${GUI_SOURCES}
+)
+
+set_target_properties(prototype_gui PROPERTIES
+    OUTPUT_NAME prototype_gui
+    WIN32_EXECUTABLE TRUE
+)
+
+target_include_directories(prototype_gui PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+)
+
+target_link_libraries(prototype_gui PRIVATE
+    robot_runtime
+    OpenGL::GL
+    glfw
+    imgui_lib
+)
+
+if(WIN32 AND MSVC)
+    target_link_libraries(prototype_gui PRIVATE opengl32)
+    target_link_options(prototype_gui PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+endif()

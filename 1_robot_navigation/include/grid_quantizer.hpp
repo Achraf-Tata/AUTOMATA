@@ -68,6 +68,7 @@ struct RegionConfig {
     double r2_x0 = 8.5; double r2_x1 = 9.5; double r2_y0 = 2.0; double r2_y1 = 3.0;
     double r3_x0 = 2.0; double r3_x1 = 3.0; double r3_y0 = 0.5; double r3_y1 = 1.5;
     double r4_x0 = 3.0; double r4_x1 = 7.0; double r4_y0 = 3.0; double r4_y1 = 7.0;
+    bool operator==(const RegionConfig&) const = default;
 };
 
 // 3D discrete grid coordinates (cell_x, cell_y, cell_theta)
@@ -79,6 +80,12 @@ struct GridCoord {
 
 // Quantizes continuous robot state (x, y, theta) into discrete integer cell coordinates
 GridCoord quantize(const State& continuous_state) noexcept;
+
+inline bool is_in_workspace(const State& state) noexcept {
+    return std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(state.theta)
+        && state.x >= X_MIN && state.x <= X_MAX
+        && state.y >= Y_MIN && state.y <= Y_MAX;
+}
 
 // Computes the continuous center position of a discrete grid cell
 State cell_center(const GridCoord& grid_coordinate) noexcept;
@@ -94,6 +101,12 @@ int flat_index(const GridCoord& grid_coordinate) noexcept;
 // 4 = Goal R3
 // 1 = Free space
 int get_region_label(double x, double y, const RegionConfig& config) noexcept;
+
+// Ambiguous cells are excluded, so every certified cell has one physical label.
+int get_cell_region_label(double x0, double x1, double y0, double y1,
+                          const RegionConfig& config) noexcept;
+uint8_t get_cell_observation_mask(double x0, double x1, double y0, double y1,
+                                  const RegionConfig& config) noexcept;
 
 // Precomputed range tables using the coordinate trick from Antoine Girard's paper.
 // Because the robot's motion equations can be split across X, Y, and angle theta,

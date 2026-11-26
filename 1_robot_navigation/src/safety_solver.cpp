@@ -158,14 +158,16 @@ SafetyResult SafetySolver::solve_safety_product(
                         break;
                     }
 
-                    ObservationSymbol obs = automaton.get_cell_observation(succ_s);
-                    auto q_next = automaton.dfa.transition(q, obs);
-
-                    size_t p_next = automaton.encode_product_index(succ_s, q_next);
-                    if (p_next >= num_prod || !safe[p_next]) {
-                        all_safe = false;
-                        break;
+                    for (int label = 0; label < 5; ++label) {
+                        if (!(automaton.cell_observation_masks[succ_s] & (1u << label))) continue;
+                        const auto next_q = automaton.dfa.transition(q, static_cast<ObservationSymbol>(label));
+                        const size_t next = automaton.encode_product_index(succ_s, next_q);
+                        if (!safe[next]) {
+                            all_safe = false;
+                            break;
+                        }
                     }
+                    if (!all_safe) break;
                 }
 
                 if (all_safe) {
